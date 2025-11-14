@@ -1369,8 +1369,8 @@ mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
 
 ### C ASO 6 RML WT half-life ####
 
-rbind(cbind(read_tsv('data/225_summary.tsv', col_types=cols()),plate=225),
-      cbind(read_tsv('data/226_summary.tsv', col_types=cols()),plate=226)) -> elisa
+rbind(cbind(read_tsv('data/226_summary.tsv', col_types=cols()),plate=226),
+      cbind(read_tsv('data/237_summary.tsv', col_types=cols()),plate=237)) -> elisa
 
 read_tsv('data/PRP240407.tsv', col_types=cols()) %>%
   mutate(animal = as.character(animal)) -> meta
@@ -1403,8 +1403,10 @@ axis(side = 2, at= 0:5/4, labels=NA)
 axis(side = 2, at= 0:5/4, labels=percent(0:5/4), las=2, lwd=0, line=-0.25)
 mtext(side=2, line=2.5, text='residual', cex=0.8)
 abline(h=1, lty=3)
+par(xpd=T)
 points(hl$day, hl$rel, col=alpha(ifelse(hl$tx=='none',ctl_color,prot_color),ci_alpha), pch=19)
 points(hl$day, hl$rna, col=alpha(ifelse(hl$tx=='none',ctl_color,rna_color),ci_alpha), pch=19)
+par(xpd=F)
 hl %>%
   filter(tx == 'ASO6') %>%
   group_by(tx, day) %>%
@@ -1708,6 +1710,148 @@ arrows(x0=smry$x, y0=smry$l95, y1=smry$u95, code=3, angle=90, length=0.05, col='
 
 
 silence_is_golden = dev.off() ### end Fig S6 Tga20 #### 
+
+
+
+
+
+## Figure 4 #### 
+tell_user('done.\nCreating Figure 4...')
+resx=300
+png('display_items/figure-4.png',width=6.5*resx,height=4.5*resx,res=resx)
+
+layout_matrix = matrix(c(1,1,1,2,2,2,3,3,3,
+                         4,4,4,4,4,5,5,6,6), nrow=2, byrow=T)
+layout(layout_matrix)
+
+panel = 1
+
+### A-B young FFI mice ####
+
+leg = tibble(genotype=c("129(TT-3F4-FFI)HOZ","129(TT-3F4WT)","B6/N"),
+             disp = c('ki-3F4-FFI','ki-3F4-WT','C57BL/6N WT'),
+           color=c('#D95F02','#22127A','#77127A'),
+           xgeno = c(1,2,3),
+           ttest_grouping = c('test','control','control'))
+
+ffi_young = read_tsv('data/iqp/ffi_young.tsv', col_types=cols()) %>%
+  mutate(prop_labeled = heavy / (heavy + light))
+
+use_peptides = c('GENFTETDVK','VVEQMCVTQYQK')
+
+ffi_young %>%
+  inner_join(leg, by='genotype') %>%
+  group_by(protein, peptide, chow_days) %>%
+  mutate(ttest_pval = t.test(prop_labeled[ttest_grouping=='test'],prop_labeled[ttest_grouping=='control'])$p.value) %>%
+  ungroup() %>% 
+  group_by(protein, peptide, genotype, disp, chow_days, color, ttest_pval) %>%
+  summarize(.groups='keep',
+            mean = mean(prop_labeled),
+            l95 = lower(prop_labeled),
+            u95 = upper(prop_labeled)) %>%
+  ungroup() -> smry
+
+smry %>%
+  filter(chow_days == 8) %>%
+  select(peptide, genotype, mean_prop_labeled_day8=mean) %>%
+  mutate(thalf_8day_estimate = as.numeric(NA)) -> thalf_ests
+for (i in 1:nrow(thalf_ests)) {
+  thalf_ests$thalf_8day_estimate[i] = find_thalf(prop_labeled = thalf_ests$mean_prop_labeled_day8[i], which_t = 8, avails=free_lysine)
+}
+  
+
+for (this_peptide in use_peptides) {
+  
+
+
+par(mar=c(3,4,3,3))
+xlims = c(-1, 9)
+xbigs = c(0, 2, 4, 6, 8)
+xats = 0:8
+ylims = c(0, .50)
+ybigs = 0:10/10
+ybiglabs = percent(ybigs)
+yats = 0:20/20
+plot(NA, NA, xlim=xlims, ylim=ylims, axes=F, ann=F, xaxs='i', yaxs='i')
+axis(side=1, at=xbigs, labels=NA, tck=-0.05)
+axis(side=1, at=xbigs, lwd=0, line=-0.25)
+axis(side=1, at=xats, labels=NA, tck=-0.02)
+mtext(side=1, line=1.6, text='day')
+axis(side=2, at=ybigs, labels=NA, tck=-0.05)
+axis(side=2, at=ybigs, labels=ybiglabs, lwd=0, las=2, line=-0.5)
+axis(side=2, at=yats, labels=NA, tck=-0.02)
+mtext(side=2, line=2.5, text='proportion labeled', cex=0.8)
+mtext(side=3, text=substr(this_peptide,1,4), line=0, cex=0.6)
+
+
+for (this_genotype in unique(leg$genotype)) {
+  subs = ffi_young %>%
+    filter(genotype==this_genotype & peptide==this_peptide) %>%
+    inner_join(leg, by='genotype')
+  smry %>%
+    filter(genotype==this_genotype & peptide==this_peptide) -> this_smry
+  
+  points(x=this_smry$chow_days, y=this_smry$mean, type='l', lwd=2, col=this_smry$color)
+  polygon(x=c(this_smry$chow_days, rev(this_smry$chow_days)), y=c(this_smry$l95, rev(this_smry$u95)), col=alpha(this_smry$color, ci_alpha), border=NA)
+  points(x=subs$chow_days, y=subs$prop_labeled, col=subs$color, pch=1, bg='#FFFFFF')
+  
+  thalf_8day_estimate = thalf_ests %>%
+    filter(peptide==this_peptide & genotype==this_genotype) %>% 
+    pull(thalf_8day_estimate)
+  theoreticals = proportion_labeled(thalf=thalf_8day_estimate, t=t, avails=free_lysine)
+  
+  points(x=t, y=theoreticals, type='l', col='#000000', lty=1, lwd=0.5)
+  
+#  mtext(side=4, las=2, line=0.25, at=this_smry$mean[this_smry$chow_days==8], text=formatC(thalf_8day_estimate,format='f',digits=1), cex=0.6)
+  
+  legend('topleft', leg$disp, col=leg$color, lwd=1, text.col=leg$color, bty='n', cex=0.7)
+}
+
+
+mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
+
+
+}
+
+write_supp_table(smry, 'Mean labeling of peptides by isotopic chow days in young FFI mice and comparators.')
+write_supp_table(thalf_ests, 'PrP half-life estimates for young FFI mice and comparators.')
+
+smry %>%
+  group_by(protein, peptide, chow_days, ttest_pval) %>%
+  summarize(.groups='keep',
+            labeled_change = mean[disp=='ki-3F4-FFI'] / ((mean[disp=='ki-3F4-WT'] + mean[disp=='C57BL/6N WT'])/2)) %>%
+  ungroup() -> ffi_young_changes_by_pep
+
+qq_legend = tibble(color = c('#D90000', '#797979'),
+                   disp = c('PrP', 'non-PrP'))
+
+ffi_young_changes_by_pep %>%
+  arrange(ttest_pval) %>%
+  rename(observed=ttest_pval) %>%
+  mutate(color = ifelse(protein=='PRNP', qq_legend$color[qq_legend$disp=='PrP'], qq_legend$color[qq_legend$disp=='non-PrP'])) %>%
+  mutate(expected = sort(seq(1/nrow(ffi_young_changes_by_pep), 1, length.out=nrow(ffi_young_changes_by_pep)))) -> qq
+  
+#expected = sort(seq(0, 1, length.out=nrow(ffi_young_changes_by_pep)))
+#observed = sort(ffi_young_changes_by_pep$ttest_pval)
+lims = c(0, ceiling(max(-log10(c(qq$expected, qq$observed)))*1.1))
+plot(NA, NA, xlim=lims, ylim=lims, axes=F, ann=F, xaxs='i', yaxs='i')
+axis(side=1)
+mtext(side=1, line=2.2, text='expected')
+axis(side=2, las=2)
+mtext(side=2, line=2.2, text='observed')
+points(x=-log10(qq$expected), y=-log10(qq$observed), pch=20, col=qq$color)
+abline(a=0,b=1,lwd=0.5)
+
+legend('bottomright', qq_legend$disp, col=qq_legend$color, pch=20, bty='n', cex=0.8)
+
+mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
+
+silence_is_golden = dev.off()
+### end Fig 4 ####
+
+
+
+
 
 
 # Supplement #### 
