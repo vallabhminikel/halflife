@@ -1721,134 +1721,286 @@ resx=300
 png('display_items/figure-4.png',width=6.5*resx,height=4.5*resx,res=resx)
 
 layout_matrix = matrix(c(1,1,1,2,2,2,3,3,3,
-                         4,4,4,4,4,5,5,6,6), nrow=2, byrow=T)
+                         4,4,4,5,5,5,6,6,6), nrow=2, byrow=T)
 layout(layout_matrix)
 
 panel = 1
 
-### A-B young FFI mice ####
+ffi_all = read_tsv('data/iqp/ffi_turnover.tsv', col_types=cols()) %>%
+  mutate(total = light + heavy) %>%
+  mutate(prop_labeled = heavy / (total))
 
 leg = tibble(genotype=c("129(TT-3F4-FFI)HOZ","129(TT-3F4WT)","B6/N"),
              disp = c('ki-3F4-FFI','ki-3F4-WT','C57BL/6N WT'),
-           color=c('#D95F02','#22127A','#77127A'),
-           xgeno = c(1,2,3),
-           ttest_grouping = c('test','control','control'))
+             color=c('#D95F02','#22127A','#77127A'),
+             xgeno = c(1,2,3),
+             ttest_grouping = c('test','control','control'))
 
-ffi_young = read_tsv('data/iqp/ffi_young.tsv', col_types=cols()) %>%
-  mutate(prop_labeled = heavy / (heavy + light))
-
-use_peptides = c('GENFTETDVK','VVEQMCVTQYQK')
-
-ffi_young %>%
+ffi_all %>% 
   inner_join(leg, by='genotype') %>%
-  group_by(protein, peptide, chow_days) %>%
-  mutate(ttest_pval = t.test(prop_labeled[ttest_grouping=='test'],prop_labeled[ttest_grouping=='control'])$p.value) %>%
-  ungroup() %>% 
-  group_by(protein, peptide, genotype, disp, chow_days, color, ttest_pval) %>%
+  group_by(protein, peptide) %>%
+  mutate(n_ages_detected = length(unique(age))) %>%
+  filter(n_ages_detected == 2) %>%
+  ungroup() %>%
+  select(-n_ages_detected) %>%
+  group_by(protein, peptide) %>%
   summarize(.groups='keep',
-            mean = mean(prop_labeled),
-            l95 = lower(prop_labeled),
-            u95 = upper(prop_labeled)) %>%
-  ungroup() -> smry
+            n = n(),
+            pval_total = t.test(total[genotype=='129(TT-3F4-FFI)HOZ'], total[genotype!='129(TT-3F4-FFI)HOZ'])$p.value,
+            ratio_total = mean(total[genotype=='129(TT-3F4-FFI)HOZ']) / mean(total[genotype!='129(TT-3F4-FFI)HOZ']),
+            label_obj = label_difference(prop_labeled, chow_days, genotype),
+            ratio_thalf = label_obj$thalf_ratio,
+            br_ffi_pval = label_obj$br_ffi_pval,
+            br_interaction_pval = label_obj$br_interaction_pval) %>%
+  ungroup() %>%
+  select(-label_obj) -> genotypic_diffs_regardless_age
+genotypic_diffs_regardless_age$bonf_total = pmin(1, genotypic_diffs_regardless_age$pval_total * nrow(genotypic_diffs_regardless_age))
+genotypic_diffs_regardless_age$bonf_label = pmin(1, genotypic_diffs_regardless_age$pval_label * nrow(genotypic_diffs_regardless_age))
 
-smry %>%
-  filter(chow_days == 8) %>%
-  select(peptide, genotype, mean_prop_labeled_day8=mean) %>%
-  mutate(thalf_8day_estimate = as.numeric(NA)) -> thalf_ests
-for (i in 1:nrow(thalf_ests)) {
-  thalf_ests$thalf_8day_estimate[i] = find_thalf(prop_labeled = thalf_ests$mean_prop_labeled_day8[i], which_t = 8, avails=free_lysine)
-}
+
+
+ffi_all %>% 
+  inner_join(leg, by='genotype') %>%
+  group_by(protein, peptide) %>%
+  mutate(n_ages_detected = length(unique(age))) %>%
+  filter(n_ages_detected == 2) %>%
+  ungroup() %>%
+  select(-n_ages_detected) %>%
+  group_by(protein, peptide, age) %>%
+  summarize(.groups='keep',
+            n = n(),
+            pval_total = t.test(total[genotype=='129(TT-3F4-FFI)HOZ'], total[genotype!='129(TT-3F4-FFI)HOZ'])$p.value,
+            ratio_total = mean(total[genotype=='129(TT-3F4-FFI)HOZ']) / mean(total[genotype!='129(TT-3F4-FFI)HOZ']),
+            label_obj = label_difference(prop_labeled, chow_days, genotype),
+            ratio_thalf = label_obj$thalf_ratio, 
+            pval_label_ffi = label_obj$br_ffi_pval, 
+            pval_label_interaction = label_obj$br_interaction_pval) %>%
+  ungroup() %>%
+  select(-label_obj) %>%
+  mutate(log2_ratio_total = log2(ratio_total),
+         log2_ratio_thalf = log2(ratio_thalf)) %>%
+  mutate(total_color = case_when(log2_ratio_total < 0 ~ '#FF0000',
+                                 log2_ratio_total > 0 ~ '#0000FF',
+                                 log2_ratio_total ==0 ~ '#000000')) %>%
+  mutate(label_ffi_color = case_when(log2_ratio_thalf < 0 ~ '#FF0000',
+                                 log2_ratio_thalf > 0 ~ '#0000FF',
+                                 log2_ratio_thalf ==0 ~ '#000000'))%>%
+  mutate(pepnick = substr(peptide, 1, 4)) -> genotypic_diffs_by_age
+
+
+
+
+
+for (this_age in c('young','aged')) {
+  ### A-D young FFI mice ####
   
+  # volcano of total protein abundance
+  genotypic_diffs_by_age %>%
+    filter(age==this_age) -> ffi
 
-for (this_peptide in use_peptides) {
   
-
-
-par(mar=c(3,4,3,3))
-xlims = c(-1, 9)
-xbigs = c(0, 2, 4, 6, 8)
-xats = 0:8
-ylims = c(0, .50)
-ybigs = 0:10/10
-ybiglabs = percent(ybigs)
-yats = 0:20/20
-plot(NA, NA, xlim=xlims, ylim=ylims, axes=F, ann=F, xaxs='i', yaxs='i')
-axis(side=1, at=xbigs, labels=NA, tck=-0.05)
-axis(side=1, at=xbigs, lwd=0, line=-0.25)
-axis(side=1, at=xats, labels=NA, tck=-0.02)
-mtext(side=1, line=1.6, text='day')
-axis(side=2, at=ybigs, labels=NA, tck=-0.05)
-axis(side=2, at=ybigs, labels=ybiglabs, lwd=0, las=2, line=-0.5)
-axis(side=2, at=yats, labels=NA, tck=-0.02)
-mtext(side=2, line=2.5, text='proportion labeled', cex=0.8)
-mtext(side=3, text=substr(this_peptide,1,4), line=0, cex=0.6)
-
-
-for (this_genotype in unique(leg$genotype)) {
-  subs = ffi_young %>%
-    filter(genotype==this_genotype & peptide==this_peptide) %>%
-    inner_join(leg, by='genotype')
+  
+  ffi$total_color = alpha(ffi$total_color, case_when(ffi$pval_total > 0.05/nrow(ffi) ~ 0.1,
+                                                                                           TRUE ~ 1))
+  ffi$label_ffi_color = alpha(ffi$label_ffi_color, case_when(ffi$pval_label_ffi > 0.05/nrow(ffi) ~ 0.1,
+                                                                                                   TRUE ~ 1))  
+  
+  xlims = c(-3, 3)
+  xbigs = -3:3
+  xats = seq(-3, 3, .5)
+  ylims = c(0, 10)
+  ybigs = 0:10
+  ybiglabs = as.character(0:10) %>% gsub('10','≥10', .)
+  yats = seq(0, 10, .5)
+  plot(NA, NA, xlim=xlims, ylim=ylims, axes=F, ann=F, xaxs='i', yaxs='i')
+  axis(side=1, at=xbigs, labels=NA, tck=-0.05)
+  axis(side=1, at=xbigs, lwd=0, line=-0.25)
+  axis(side=1, at=xats, labels=NA, tck=-0.02)
+  mtext(side=1, line=1.6, text='log2 fold change protein abundance')
+  axis(side=2, at=ybigs, labels=NA, tck=-0.05)
+  axis(side=2, at=ybigs, labels=ybiglabs, lwd=0, las=2, line=-0.5)
+  axis(side=2, at=yats, labels=NA, tck=-0.02)
+  mtext(side=2, line=2.5, text='-log10(P)')
+  abline(h=-log10(0.05 / nrow(ffi)))
+  par(xpd=T)
+  points(x=ffi$log2_ratio_total, y=pmin(-log10(ffi$pval_total), max(ylims)), pch=20, col=ffi$total_color)
+  ffi %>% 
+    filter(protein=='PRNP') -> to_label
+  for (i in 1:nrow(to_label)) {
+    text(x=to_label$log2_ratio_total[i], y=pmin(-log10(to_label$pval_total[i]), max(ylims)), pos=4, labels=bquote(italic(.(to_label$protein[i])) * ' ' * .(to_label$pepnick[i])), cex=0.6)
+  }
+  par(xpd=F)
+  
+  
+  
+  
+  xlims = c(-3, 3)
+  xbigs = -3:3
+  xats = seq(-3, 3, .5)
+  ylims = c(0, 10)
+  ybigs = 0:10
+  ybiglabs = as.character(0:10) %>% gsub('10','≥10', .)
+  yats = seq(0, 10, .5)
+  plot(NA, NA, xlim=xlims, ylim=ylims, axes=F, ann=F, xaxs='i', yaxs='i')
+  axis(side=1, at=xbigs, labels=NA, tck=-0.05)
+  axis(side=1, at=xbigs, lwd=0, line=-0.25)
+  axis(side=1, at=xats, labels=NA, tck=-0.02)
+  mtext(side=1, line=1.6, text='log2 fold change half-life main effect')
+  axis(side=2, at=ybigs, labels=NA, tck=-0.05)
+  axis(side=2, at=ybigs, labels=ybiglabs, lwd=0, las=2, line=-0.5)
+  axis(side=2, at=yats, labels=NA, tck=-0.02)
+  mtext(side=2, line=2.5, text='-log10(P)')
+  abline(h=-log10(0.05 / nrow(ffi)))
+  par(xpd=T)
+  points(x=ffi$log2_ratio_thalf, y=pmin(-log10(ffi$pval_label_ffi), max(ylims)), pch=20, col=ffi$label_ffi_color)
+  ffi %>% 
+    filter(protein=='PRNP') -> to_label
+  # amazingly, bquote is not vectorized? the only way to do this is in a loop??
+  # text(x=to_label$log2_ratio_total, y=pmin(-log10(to_label$pval_total), max(ylims)), pos=4, labels=bquote(italic(.(to_label$protein)) * ' ' * .(to_label$pepnick)), cex=0.6)
+  for (i in 1:nrow(to_label)) {
+    text(x=to_label$log2_ratio_thalf[i], y=pmin(-log10(to_label$pval_label_ffi[i]), max(ylims)), pos=4, labels=bquote(italic(.(to_label$protein[i])) * ' ' * .(to_label$pepnick[i])), cex=0.6)
+  }
+  par(xpd=F)
+  
+  
+  
+  ffi %>%
+    inner_join(leg, by='genotype') %>%
+    group_by(protein, peptide, chow_days) %>%
+    mutate(ttest_pval = t.test(prop_labeled[ttest_grouping=='test'],prop_labeled[ttest_grouping=='control'])$p.value) %>%
+    ungroup() %>% 
+    group_by(protein, peptide, genotype, disp, chow_days, color, ttest_pval) %>%
+    summarize(.groups='keep',
+              mean = mean(prop_labeled),
+              l95 = lower(prop_labeled),
+              u95 = upper(prop_labeled)) %>%
+    ungroup() -> smry
+  
   smry %>%
-    filter(genotype==this_genotype & peptide==this_peptide) -> this_smry
+    filter(chow_days == 8) %>%
+    select(peptide, genotype, mean_prop_labeled_day8=mean) %>%
+    mutate(thalf_8day_estimate = as.numeric(NA)) -> thalf_ests
+  for (i in 1:nrow(thalf_ests)) {
+    thalf_ests$thalf_8day_estimate[i] = find_thalf(prop_labeled = thalf_ests$mean_prop_labeled_day8[i], which_t = 8, avails=free_lysine)
+  }
   
-  points(x=this_smry$chow_days, y=this_smry$mean, type='l', lwd=2, col=this_smry$color)
-  polygon(x=c(this_smry$chow_days, rev(this_smry$chow_days)), y=c(this_smry$l95, rev(this_smry$u95)), col=alpha(this_smry$color, ci_alpha), border=NA)
-  points(x=subs$chow_days, y=subs$prop_labeled, col=subs$color, pch=1, bg='#FFFFFF')
   
-  thalf_8day_estimate = thalf_ests %>%
-    filter(peptide==this_peptide & genotype==this_genotype) %>% 
-    pull(thalf_8day_estimate)
-  theoreticals = proportion_labeled(thalf=thalf_8day_estimate, t=t, avails=free_lysine)
+  for (this_peptide in use_peptides) {
+    
+    
+    
+    par(mar=c(3,4,3,3))
+    xlims = c(-1, 9)
+    xbigs = c(0, 2, 4, 6, 8)
+    xats = 0:8
+    ylims = c(0, .50)
+    ybigs = 0:10/10
+    ybiglabs = percent(ybigs)
+    yats = 0:20/20
+    plot(NA, NA, xlim=xlims, ylim=ylims, axes=F, ann=F, xaxs='i', yaxs='i')
+    axis(side=1, at=xbigs, labels=NA, tck=-0.05)
+    axis(side=1, at=xbigs, lwd=0, line=-0.25)
+    axis(side=1, at=xats, labels=NA, tck=-0.02)
+    mtext(side=1, line=1.6, text='day')
+    axis(side=2, at=ybigs, labels=NA, tck=-0.05)
+    axis(side=2, at=ybigs, labels=ybiglabs, lwd=0, las=2, line=-0.5)
+    axis(side=2, at=yats, labels=NA, tck=-0.02)
+    mtext(side=2, line=2.5, text='proportion labeled', cex=0.8)
+    mtext(side=3, text=substr(this_peptide,1,4), line=0, cex=0.6)
+    
+    
+    for (this_genotype in unique(leg$genotype)) {
+      subs = ffi %>%
+        filter(genotype==this_genotype & peptide==this_peptide) %>%
+        inner_join(leg, by='genotype')
+      smry %>%
+        filter(genotype==this_genotype & peptide==this_peptide) -> this_smry
+      
+      points(x=this_smry$chow_days, y=this_smry$mean, type='l', lwd=2, col=this_smry$color)
+      polygon(x=c(this_smry$chow_days, rev(this_smry$chow_days)), y=c(this_smry$l95, rev(this_smry$u95)), col=alpha(this_smry$color, ci_alpha), border=NA)
+      points(x=subs$chow_days, y=subs$prop_labeled, col=subs$color, pch=1, bg='#FFFFFF')
+      
+      thalf_8day_estimate = thalf_ests %>%
+        filter(peptide==this_peptide & genotype==this_genotype) %>% 
+        pull(thalf_8day_estimate)
+      theoreticals = proportion_labeled(thalf=thalf_8day_estimate, t=t, avails=free_lysine)
+      
+      points(x=t, y=theoreticals, type='l', col='#000000', lty=1, lwd=0.5)
+      
+      #  mtext(side=4, las=2, line=0.25, at=this_smry$mean[this_smry$chow_days==8], text=formatC(thalf_8day_estimate,format='f',digits=1), cex=0.6)
+      
+      legend('topleft', leg$disp, col=leg$color, lwd=1, text.col=leg$color, bty='n', cex=0.7)
+    }
+    
+    
+    mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
+    
+    
+  }
   
-  points(x=t, y=theoreticals, type='l', col='#000000', lty=1, lwd=0.5)
+  write_supp_table(smry, paste0('Mean labeling of peptides by isotopic chow days in ',this_age,' FFI mice and comparators.'))
+  write_supp_table(thalf_ests, paste0('PrP half-life estimates for ',this_age,' FFI mice and comparators.'))
   
-#  mtext(side=4, las=2, line=0.25, at=this_smry$mean[this_smry$chow_days==8], text=formatC(thalf_8day_estimate,format='f',digits=1), cex=0.6)
+  smry %>%
+    group_by(protein, peptide, chow_days, ttest_pval) %>%
+    summarize(.groups='keep',
+              labeled_change = mean[disp=='ki-3F4-FFI'] / ((mean[disp=='ki-3F4-WT'] + mean[disp=='C57BL/6N WT'])/2)) %>%
+    ungroup() -> ffi_changes_by_pep
   
-  legend('topleft', leg$disp, col=leg$color, lwd=1, text.col=leg$color, bty='n', cex=0.7)
+  qq_legend = tibble(color = c('#D90000', '#797979'),
+                     disp = c('PrP', 'non-PrP'))
+  
+  ffi_changes_by_pep %>%
+    arrange(ttest_pval) %>%
+    rename(observed=ttest_pval) %>%
+    mutate(color = ifelse(protein=='PRNP', qq_legend$color[qq_legend$disp=='PrP'], qq_legend$color[qq_legend$disp=='non-PrP'])) %>%
+    mutate(expected = sort(seq(1/nrow(ffi_changes_by_pep), 1, length.out=nrow(ffi_changes_by_pep)))) -> qq
+  
+  lims = c(0, ceiling(max(-log10(c(qq$expected, qq$observed)))*1.1))
+  plot(NA, NA, xlim=lims, ylim=lims, axes=F, ann=F, xaxs='i', yaxs='i')
+  axis(side=1)
+  mtext(side=1, line=2.2, text='expected')
+  axis(side=2, las=2)
+  mtext(side=2, line=2.2, text='observed')
+  points(x=-log10(qq$expected), y=-log10(qq$observed), pch=20, col=qq$color)
+  abline(a=0,b=1,lwd=0.5)
+  
+  legend('bottomright', qq_legend$disp, col=qq_legend$color, pch=20, bty='n', cex=0.8)
+  
+  mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
 }
-
-
-mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
-
-
-}
-
-write_supp_table(smry, 'Mean labeling of peptides by isotopic chow days in young FFI mice and comparators.')
-write_supp_table(thalf_ests, 'PrP half-life estimates for young FFI mice and comparators.')
-
-smry %>%
-  group_by(protein, peptide, chow_days, ttest_pval) %>%
-  summarize(.groups='keep',
-            labeled_change = mean[disp=='ki-3F4-FFI'] / ((mean[disp=='ki-3F4-WT'] + mean[disp=='C57BL/6N WT'])/2)) %>%
-  ungroup() -> ffi_young_changes_by_pep
-
-qq_legend = tibble(color = c('#D90000', '#797979'),
-                   disp = c('PrP', 'non-PrP'))
-
-ffi_young_changes_by_pep %>%
-  arrange(ttest_pval) %>%
-  rename(observed=ttest_pval) %>%
-  mutate(color = ifelse(protein=='PRNP', qq_legend$color[qq_legend$disp=='PrP'], qq_legend$color[qq_legend$disp=='non-PrP'])) %>%
-  mutate(expected = sort(seq(1/nrow(ffi_young_changes_by_pep), 1, length.out=nrow(ffi_young_changes_by_pep)))) -> qq
-  
-#expected = sort(seq(0, 1, length.out=nrow(ffi_young_changes_by_pep)))
-#observed = sort(ffi_young_changes_by_pep$ttest_pval)
-lims = c(0, ceiling(max(-log10(c(qq$expected, qq$observed)))*1.1))
-plot(NA, NA, xlim=lims, ylim=lims, axes=F, ann=F, xaxs='i', yaxs='i')
-axis(side=1)
-mtext(side=1, line=2.2, text='expected')
-axis(side=2, las=2)
-mtext(side=2, line=2.2, text='observed')
-points(x=-log10(qq$expected), y=-log10(qq$observed), pch=20, col=qq$color)
-abline(a=0,b=1,lwd=0.5)
-
-legend('bottomright', qq_legend$disp, col=qq_legend$color, pch=20, bty='n', cex=0.8)
-
-mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
 
 silence_is_golden = dev.off()
 ### end Fig 4 ####
 
+
+
+
+ffi_turnover %>%
+  filter(protein=='PRNP' & !grepl('QHT',peptide)) %>%
+  group_by(protein, peptide, genotype, age, chow_days) %>%
+  summarize(.groups='keep',
+            mean_light=mean(light),
+            mean_heavy=mean(heavy),
+            mean_labeled=mean(heavy/(heavy+light))) %>%
+  ungroup() %>%
+  group_by(protein, peptide, genotype, age, chow_days) %>%
+  summarize(.groups='keep',
+            thalf_estimate = find_thalf(mean_labeled, t, which_t=chow_days, avails=free_lysine)) %>%
+  ungroup() -> prnp_ffi_turnover
+
+
+ffi_turnover %>%
+  group_by(protein, peptide, genotype, age, chow_days) %>%
+  summarize(.groups='keep',
+            mean_light=mean(light),
+            mean_heavy=mean(heavy),
+            mean_labeled=mean(heavy/(heavy+light))) %>%
+  ungroup() %>%
+  group_by(protein, peptide, genotype, age, chow_days) %>%
+  summarize(.groups='keep',
+            thalf_estimate = find_thalf(mean_labeled, t, which_t=chow_days, avails=free_lysine)) %>%
+  ungroup() -> all_ffi_turnover
 
 
 
