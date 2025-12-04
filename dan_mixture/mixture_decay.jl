@@ -188,7 +188,7 @@ function main()
     ax1 = Axis(fig[1,1], title="Simulation", xlabel="Time Steps", ylabel="Measured Quantity")
     scatter!(ax1, t_data, P_data, color=:black, label="Data")
     lines!(ax1, t_fine, P_single, color=:red, linestyle=:dash, label=L"dP = λR_{t-1}dt-λP_{t-1}dt")
-    lines!(ax1, t_fine, P_mix, color=:blue, linewidth=2, label=L"dP = \sum_k{\left(\sum_k{w_k λ_k}\right)R_{t-1}dt - λ_k P_{k,t-1}dt}")
+    lines!(ax1, t_fine, P_mix, color=:blue, linewidth=2, label=L"dP = \sum_k{w_k λ_k R_{t-1}dt - λ_k P_{k,t-1}dt}")
     Legend(fig[1,2],ax1)
 
     # ax2 = Axis(fig[1,2], title="Subpopulations", xlabel="Time")
@@ -616,8 +616,108 @@ function generate_figure_model_comparison()
     return fig
 end
 
+
+"""
+Generate text report of mixture model components and half-lives
+"""
+function generate_mixture_report()
+    println("=" ^ 80)
+    println("MIXTURE MODEL ANALYSIS REPORT")
+    println("=" ^ 80)
+    println()
+
+    # Load data
+    ffi_all = CSV.read("data/iqp/ffi_turnover.tsv", DataFrame)
+    ffi_all[!, :total] = ffi_all.light .+ ffi_all.heavy
+    ffi_all[!, :prop_labeled] = ffi_all.heavy ./ ffi_all.total
+
+    # Genotype info
+    genotypes = ["129(TT-3F4-FFI)HOZ", "129(TT-3F4WT)", "B6/N"]
+    genotype_labels = ["ki-3F4-FFI", "ki-3F4-WT", "C57BL/6N WT"]
+
+    # Peptides and ages
+    peptides = ["GENFTETDVK", "VVEQMCVTQYQK"]
+    ages = ["young", "aged"]
+
+    avails_func = free_lysine
+
+    # Generate report for each combination
+    for this_age in ages
+        println("\n" * "=" ^ 80)
+        println("AGE: $(uppercase(this_age))")
+        println("=" ^ 80)
+
+        for this_peptide in peptides
+            println("\n" * "-" ^ 80)
+            println("Peptide: $(this_peptide)")
+            println("-" ^ 80)
+
+            for (geno_idx, this_genotype) in enumerate(genotypes)
+                # Filter data
+                data = filter(row -> row.genotype == this_genotype &&
+                                    row.peptide == this_peptide &&
+                                    row.age == this_age, ffi_all)
+
+                if nrow(data) == 0
+                    println("\n  $(genotype_labels[geno_idx]): No data")
+                    continue
+                end
+
+                # Fit single model
+                thalf_single = fit_isotopic_thalf_single(
+                    data.chow_days,
+                    data.prop_labeled,
+                    avails_func
+                )
+
+                # Fit mixture model
+                mixture_fit = fit_isotopic_thalf_mixture(
+                    data.chow_days,
+                    data.prop_labeled,
+                    avails_func
+                )
+
+                # Print results
+                println("\n  $(genotype_labels[geno_idx]):")
+                println("    n = $(nrow(data)) observations")
+
+                if !isnan(thalf_single)
+                    @printf("    Single-rate model: t½ = %.2f days\n", thalf_single)
+                else
+                    println("    Single-rate model: Failed to converge")
+                end
+
+                if !isnan(mixture_fit.effective_thalf)
+                    println("    Mixture model:")
+                    @printf("      Component 1 (fast):  t½ = %.2f days, π = %.1f%%\n",
+                           mixture_fit.thalves[1], mixture_fit.proportions[1] * 100)
+                    @printf("      Component 2 (slow):  t½ = %.2f days, π = %.1f%%\n",
+                           mixture_fit.thalves[2], mixture_fit.proportions[2] * 100)
+                    @printf("      Effective t½ = %.2f days\n", mixture_fit.effective_thalf)
+
+                    # Calculate improvement over single model
+                    if !isnan(thalf_single)
+                        ratio = mixture_fit.effective_thalf / thalf_single
+                        @printf("      Ratio (mixture/single) = %.2f\n", ratio)
+                    end
+                else
+                    println("    Mixture model: Failed to converge")
+                end
+            end
+        end
+    end
+
+    println("\n" * "=" ^ 80)
+    println("END OF REPORT")
+    println("=" ^ 80)
+end
+
 # Run Figure 4 generation with both models
 #generate_all_figure4()
 
 # Generate model comparison figure
 generate_figure_model_comparison()
+
+# Generate mixture model report
+println("\n")
+generate_mixture_report()
