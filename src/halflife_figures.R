@@ -60,6 +60,42 @@ ci_alpha = 0.35 # degree of transparency for shading confidence intervals in plo
 
 
 
+# Lt is proportion labeled at time t
+Lt = function(avails, t, lambda) {
+  L = numeric(length(t))
+  dL = numeric(length(t))
+  L[1] = 0
+  for (i in 2:length(t)) {
+    dt = (t[i]- t[i-1])
+    # avails[i] * lambda * dt *  (1-L[i-1]) : accumulation of label. note because this is a differential (d), only the replacement of unlabeled with labeled is accounted for - replacement of labeled with labeled is invisible
+    # (1-avails) * lambda * dt * (1-L[i-1]): decay of labeled and its replacement with (1-avails) worth of unlabeled
+    dL[i] = avails[i] * lambda * dt * (1-L[i-1]) - (1-avails[i]) * lambda * dt * (L[i-1]) 
+    L[i] = L[i-1] + dL[i]
+  }
+  return (L)
+}
+
+
+calculate_residuals_Lt = function(par, data, dt=0.01) {
+  lambda = par[['lambda']]
+  t = seq(0,max(data$day),dt)
+  L_pred = Lt(avails, t, lambda)[match(data$day, t)]
+  residuals = data$prop_labeled - L_pred
+  return (residuals)
+}
+
+
+fit_isotopic_thalf = function(chow_days, prop_labeled, start_lambda=log(2)/5, avails_function=free_lysine, dt=0.01) {
+  t = seq(0, max(chow_days), dt)
+  avails = avails_function(t) 
+  nlsfit = nls.lm(par=c(lambda=start_lambda), fn=calculate_residuals_Lt, data=tibble(day=chow_days, prop_labeled), dt=dt)
+  fit_lambda = as.numeric(nlsfit$par['lambda'])
+  thalf_found = log(2)/fit_lambda
+  return(thalf_found)
+}
+
+
+
 # Data ####
 
 tell_user('done.\nReading in data...')
@@ -1230,8 +1266,8 @@ mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
 
 ### C ASO 6 RML WT half-life ####
 
-rbind(cbind(read_tsv('data/225_summary.tsv', col_types=cols()),plate=225),
-      cbind(read_tsv('data/226_summary.tsv', col_types=cols()),plate=226)) -> elisa
+rbind(cbind(read_tsv('data/226_summary.tsv', col_types=cols()),plate=226),
+      cbind(read_tsv('data/237_summary.tsv', col_types=cols()),plate=237)) -> elisa
 
 read_tsv('data/PRP240407.tsv', col_types=cols()) %>%
   mutate(animal = as.character(animal)) -> meta
@@ -1264,8 +1300,10 @@ axis(side = 2, at= 0:5/4, labels=NA)
 axis(side = 2, at= 0:5/4, labels=percent(0:5/4), las=2, lwd=0, line=-0.25)
 mtext(side=2, line=2.5, text='residual', cex=0.8)
 abline(h=1, lty=3)
+par(xpd=T)
 points(hl$day, hl$rel, col=alpha(ifelse(hl$tx=='none',ctl_color,prot_color),ci_alpha), pch=19)
 points(hl$day, hl$rna, col=alpha(ifelse(hl$tx=='none',ctl_color,rna_color),ci_alpha), pch=19)
+par(xpd=F)
 hl %>%
   filter(tx == 'ASO6') %>%
   group_by(tx, day) %>%
@@ -1569,6 +1607,320 @@ arrows(x0=smry$x, y0=smry$l95, y1=smry$u95, code=3, angle=90, length=0.05, col='
 
 
 silence_is_golden = dev.off() ### end Fig S6 Tga20 #### 
+
+
+
+
+
+## Figure 4 #### 
+tell_user('done.\nCreating Figure 4...')
+resx=300
+png('display_items/figure-4.png',width=6.5*resx,height=4.5*resx,res=resx)
+
+layout_matrix = matrix(c(1,1,1,1,
+                         2,3,4,5,
+                         6,6,6,6,
+                         7,8,9,10), nrow=4, byrow=T)
+layout(layout_matrix, heights=c(0.07, 1, 0.07, 1))
+
+panel = 1
+
+ffi_all = read_tsv('data/iqp/ffi_turnover.tsv', col_types=cols()) %>%
+  mutate(total = light + heavy) %>%
+  mutate(prop_labeled = heavy / (total))
+
+leg = tibble(genotype=c("129(TT-3F4-FFI)HOZ","129(TT-3F4WT)","B6/N"),
+             disp = c('ki-3F4-FFI','ki-3F4-WT','C57BL/6N WT'),
+             color=c('#D95F02','#22127A','#77127A'),
+             xgeno = c(1,2,3),
+             ttest_grouping = c('test','control','control'))
+
+
+ffi_all %>% 
+  inner_join(leg, by='genotype') %>%
+  group_by(protein, peptide) %>%
+  mutate(n_ages_detected = length(unique(age))) %>%
+  filter(n_ages_detected == 2) %>%
+  ungroup() %>%
+  select(-n_ages_detected) %>%
+  group_by(protein, peptide, age) %>%
+  summarize(.groups='keep',
+            n = n(),
+            pval_total = t.test(total[genotype=='129(TT-3F4-FFI)HOZ'], total[genotype!='129(TT-3F4-FFI)HOZ'])$p.value,
+            ratio_total = mean(total[genotype=='129(TT-3F4-FFI)HOZ']) / mean(total[genotype!='129(TT-3F4-FFI)HOZ']),
+            label_obj = label_difference(prop_labeled, chow_days, genotype),
+            ratio_thalf = label_obj$thalf_ratio, 
+            pval_label_ffi = label_obj$br_ffi_pval, 
+            pval_label_interaction = label_obj$br_interaction_pval) %>%
+  ungroup() %>%
+  select(-label_obj) %>%
+  mutate(log2_ratio_total = log2(ratio_total),
+         log2_ratio_thalf = log2(ratio_thalf)) %>%
+  mutate(total_color = case_when(log2_ratio_total < 0 ~ '#FF0000',
+                                 log2_ratio_total > 0 ~ '#0000FF',
+                                 log2_ratio_total ==0 ~ '#000000')) %>%
+  mutate(label_ffi_color = case_when(log2_ratio_thalf < 0 ~ '#FF0000',
+                                 log2_ratio_thalf > 0 ~ '#0000FF',
+                                 log2_ratio_thalf ==0 ~ '#000000'))%>%
+  mutate(pepnick = substr(peptide, 1, 4)) -> genotypic_diffs_by_age
+
+
+for (this_age in c('young','aged')) {
+  
+  ### age header row ####
+  
+  par(mar=c(0,0,0,0))
+  plot(NA, NA, xlim=0:1, ylim=0:1, axes=F, ann=F, xaxs='i', yaxs='i')
+  if (this_age=='young') {
+    mtext(side=3, line=-2, text='young (9 weeks)', cex=1)
+  } else if (this_age=='aged') {
+    mtext(side=3, line=-2, text='aged (63 weeks)', cex=1)
+  }
+  
+  ### A/E abundance volcano ####
+  
+  genotypic_diffs_by_age %>%
+    filter(age==this_age) -> ffi
+  
+  ffi$total_color = alpha(ffi$total_color, case_when(ffi$pval_total > 0.05/nrow(ffi) ~ 0.1,
+                                                                                           TRUE ~ 1))
+  ffi$label_ffi_color = alpha(ffi$label_ffi_color, case_when(ffi$pval_label_ffi > 0.05/nrow(ffi) ~ 0.1,
+                                                              TRUE ~ 1))  
+  
+  par(mar=c(3,2.5,3,0.5))
+  xlims = c(-3, 3)
+  xbigs = -3:3
+  xats = seq(-3, 3, .5)
+  ylims = c(0, 10)
+  ybigs = 0:10
+  ybiglabs = as.character(0:10) %>% gsub('10','≥10', .)
+  yats = seq(0, 10, .5)
+  plot(NA, NA, xlim=xlims, ylim=ylims, axes=F, ann=F, xaxs='i', yaxs='i')
+  axis(side=1, at=xbigs, labels=NA, tck=-0.05)
+  axis(side=1, at=xbigs, lwd=0, line=-0.25)
+  axis(side=1, at=xats, labels=NA, tck=-0.02)
+  mtext(side=1, line=1.6, text='L2FC abundance', cex=0.6)
+  axis(side=2, at=ybigs, labels=NA, tck=-0.05)
+  axis(side=2, at=ybigs, labels=ybiglabs, lwd=0, las=2, line=-0.4)
+  axis(side=2, at=yats, labels=NA, tck=-0.02)
+  mtext(side=2, line=1.4, text='-log10(P)', cex=0.6)
+  abline(h=-log10(0.05 / nrow(ffi)))
+  par(xpd=T)
+  points(x=ffi$log2_ratio_total, y=pmin(-log10(ffi$pval_total), max(ylims)), pch=20, col=ffi$total_color)
+  ffi %>% 
+    filter(protein=='PRNP') -> to_label
+  points(x=to_label$log2_ratio_total, y=pmin(-log10(to_label$pval_total), max(ylims)), pch=1)
+  for (i in 1:nrow(to_label)) {
+    text(x=to_label$log2_ratio_total[i], y=pmin(-log10(to_label$pval_total[i]), max(ylims)), pos=4, labels=bquote(italic(.(to_label$protein[i])) * ' ' * .(to_label$pepnick[i])), cex=0.6)
+  }
+  par(xpd=F)
+  mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
+  
+  ### B/F half-life volcano ####
+  
+  par(mar=c(3,0.5,3,2.5))
+  xlims = c(-3, 3)
+  xbigs = -3:3
+  xats = seq(-3, 3, .5)
+  ylims = c(0, 10)
+  ybigs = 0:10
+  ybiglabs = as.character(0:10) %>% gsub('10','≥10', .)
+  yats = seq(0, 10, .5)
+  plot(NA, NA, xlim=xlims, ylim=ylims, axes=F, ann=F, xaxs='i', yaxs='i')
+  axis(side=1, at=xbigs, labels=NA, tck=-0.05)
+  axis(side=1, at=xbigs, lwd=0, line=-0.25)
+  axis(side=1, at=xats, labels=NA, tck=-0.02)
+  mtext(side=1, line=1.6, text='L2FC half-life', cex=0.6)
+  # axis(side=2, at=ybigs, labels=NA, tck=-0.05)
+  # axis(side=2, at=ybigs, labels=ybiglabs, lwd=0, las=2, line=-0.5)
+  axis(side=2, at=yats, labels=NA, tck=-0.02)
+  #mtext(side=2, line=1.6, text='-log10(P)')
+  abline(h=-log10(0.05 / nrow(ffi)))
+  par(xpd=T)
+  points(x=ffi$log2_ratio_thalf, y=pmin(-log10(ffi$pval_label_ffi), max(ylims)), pch=20, col=ffi$label_ffi_color)
+  ffi %>% 
+    filter(protein=='PRNP') -> to_label
+  # amazingly, bquote is not vectorized? the only way to do this is in a loop??
+  # text(x=to_label$log2_ratio_total, y=pmin(-log10(to_label$pval_total), max(ylims)), pos=4, labels=bquote(italic(.(to_label$protein)) * ' ' * .(to_label$pepnick)), cex=0.6)
+  points(x=to_label$log2_ratio_thalf, y=pmin(-log10(to_label$pval_label_ffi)), pch=1)
+  for (i in 1:nrow(to_label)) {
+    text(x=to_label$log2_ratio_thalf[i], y=pmin(-log10(to_label$pval_label_ffi[i]), max(ylims)), 
+         pos=ifelse(to_label$pepnick[i]=='VVEQ' & panel==6, 2, 4), # cheat to avoid label overlap 
+         labels=bquote(italic(.(to_label$protein[i])) * ' ' * .(to_label$pepnick[i])), cex=0.6)
+  }
+  par(xpd=F)
+  mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
+  
+  ### C/D/G/H label accumulation by day ####
+  
+  use_peptides = c('GENFTETDVK','VVEQMCVTQYQK')
+  
+  for (this_peptide in use_peptides) {
+    
+    first_panel = this_peptide == use_peptides[1]
+    if (first_panel) par(mar=c(3,3,3,0.25)) # make the first panel narrow on right
+    else par(mar=c(3,0.25,3,3)) # make the second panel narrow on left
+    
+    xlims = c(-0.5, 8.5)
+    xbigs = c(0, 2, 4, 6, 8)
+    xats = 0:8
+    ylims = c(0, .50)
+    ybigs = 0:10/10
+    ybiglabs = percent(ybigs)
+    yats = 0:20/20
+    plot(NA, NA, xlim=xlims, ylim=ylims, axes=F, ann=F, xaxs='i', yaxs='i')
+    axis(side=1, at=xbigs, labels=NA, tck=-0.05)
+    axis(side=1, at=xbigs, lwd=0, line=-0.25)
+    axis(side=1, at=xats, labels=NA, tck=-0.02)
+    mtext(side=1, line=1.6, text='day')
+    axis(side=2, at=yats, labels=NA, tck=-0.02)
+    if (first_panel) {
+      axis(side=2, at=ybigs, labels=NA, tck=-0.05)
+      axis(side=2, at=ybigs, labels=ybiglabs, lwd=0, las=2, line=-0.5)
+      mtext(side=2, line=2.5, text='proportion labeled', cex=0.6)
+    }
+    mtext(side=3, text=substr(this_peptide,1,4), line=0, cex=0.6)
+    
+    for (this_genotype in unique(leg$genotype)) {
+      
+      subs = ffi_all %>%
+        filter(genotype==this_genotype & peptide==this_peptide & age==this_age) %>%
+        inner_join(leg, by='genotype')
+      subs %>%
+        group_by(protein, peptide, genotype, disp, chow_days, color) %>%
+        summarize(.groups='keep',
+                  mean = mean(prop_labeled),
+                  l95 = lower(prop_labeled),
+                  u95 = upper(prop_labeled)) %>%
+        ungroup() -> this_smry
+      
+      points(x=this_smry$chow_days, y=this_smry$mean, type='l', lwd=2, col=this_smry$color)
+      polygon(x=c(this_smry$chow_days, rev(this_smry$chow_days)), y=c(this_smry$l95, rev(this_smry$u95)), col=alpha(this_smry$color, ci_alpha), border=NA)
+      points(x=subs$chow_days, y=subs$prop_labeled, col=subs$color, pch=1, bg='#FFFFFF')
+      # 
+      # thalf_8day_estimate = thalf_ests %>%
+      #   filter(peptide==this_peptide & genotype==this_genotype) %>% 
+      #   pull(thalf_8day_estimate)
+      # theoreticals = proportion_labeled(thalf=thalf_8day_estimate, t=t, avails=free_lysine)
+      # 
+      # points(x=t, y=theoreticals, type='l', col='#000000', lty=1, lwd=0.5)
+      # 
+      #  mtext(side=4, las=2, line=0.25, at=this_smry$mean[this_smry$chow_days==8], text=formatC(thalf_8day_estimate,format='f',digits=1), cex=0.6)
+      
+      legend('topleft', leg$disp, col=leg$color, lwd=1, text.col=leg$color, bty='n', cex=0.7)
+      
+    }
+    mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
+    
+  }
+
+}
+
+silence_is_golden = dev.off()
+### end Fig 4 ####
+
+
+## Figure S7 #### 
+tell_user('done.\nCreating Figure S7...')
+resx=300
+png('display_items/figure-s7.png',width=6.5*resx,height=3*resx,res=resx)
+
+layout_matrix = matrix(1:4, byrow=T, nrow=1)
+layout(layout_matrix)
+
+par(mar = c(6,4,2,1))
+panel = 1
+
+ffi_all %>%
+  filter(protein=='PRNP' & peptide %in% use_peptides) %>%
+  mutate(pepnick = substr(peptide, 1, 4)) %>%
+  inner_join(leg, by='genotype') -> abun_data
+
+for (this_age in c('young','aged')) {
+  for (this_peptide in use_peptides) {
+    abun_data %>%
+      filter(age==this_age & peptide==this_peptide) -> subs
+    xlims = c(0.5, 3.5)
+    if (this_peptide == 'VVEQMCVTQYQK') {
+      ylims = c(0, 2e6)
+      ybigs = 0:2*1e6
+      ybiglabs = gsub('\\+0','',formatC(ybigs, format='e', digits=0))
+      yats = 0:20*1e5
+    } else if (this_peptide == 'GENFTETDVK') {
+      ylims = c(0, 4e7)
+      ybigs = 0:4*1e7
+      ybiglabs = gsub('\\+0','',formatC(ybigs, format='e', digits=0))
+      yats = 0:40*1e6
+    }
+    plot(NA, NA, xlim=xlims, ylim=ylims, axes=F, ann=F, xaxs='i', yaxs='i')
+    mtext(side=3, text=paste0(this_age,' ',substr(this_peptide,1,4)), cex=0.8)
+    axis(side=1, at=xlims, lwd.ticks=0, labels=NA)
+    mtext(side=1, at=leg$xgeno, text=leg$disp, col=leg$color, line=0.25, cex=0.6, las=2)
+    axis(side=2, at=yats, labels=NA, tck=-0.02)
+    axis(side=2, at=ybigs, labels=NA, tck=-0.05)
+    axis(side=2, at=ybigs, labels=ybiglabs, lwd=0, las=2, line=-0.4)
+    mtext(side=2, line=2.2, text='total intensity', cex=0.8)
+    subs %>%
+      group_by(xgeno, genotype, color) %>%
+      summarize(.groups='keep',
+                n = n(),
+                mean_total = mean(total),
+                l95_total = lower(total),
+                u95_total = upper(total)) %>%
+      ungroup() -> smry
+    barwidth = 0.4
+    rect(xleft=smry$xgeno-barwidth, xright=smry$xgeno+barwidth, ybottom=rep(0, nrow(smry)), ytop=smry$mean_total, col=alpha(smry$color, ci_alpha), border=NA)
+    arrows(x0=smry$xgeno, y0=smry$l95_total, y1=smry$u95_total, col=smry$color, code=3, angle=90, length=0.05)
+    set.seed(1)
+    points(jitter(subs$xgeno,amount=.25), subs$total, pch=21, bg='#FFFFFF', col=subs$color)
+    mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
+  }  
+}
+silence_is_golden = dev.off()
+### end Figure S7 #### 
+
+
+## Supp tables related to Figure 4 ####
+write_supp_table(genotypic_diffs_by_age, 'Differences in protein abundance and half-life between FFI mice and controls by peptide and age.')
+
+ffi_all %>%
+  group_by(protein, peptide, age, genotype, chow_days) %>%
+  summarize(.groups='keep',
+            n = n(),
+            mean_prop_labeled = mean(prop_labeled),
+            l95_prop_labeled = lower(prop_labeled),
+            u95_prop_labeled = upper(prop_labeled)) %>%
+  ungroup() -> ffi_labeled_smry
+
+write_supp_table(ffi_labeled_smry, 'Proportion labeled by peptide, genotype, age, and days of isotopic chow in FFI and control mice.')
+
+ffi_all %>%
+  group_by(protein, peptide, age, genotype) %>%
+  summarize(.groups='keep',
+            n = n(),
+            mean_total = mean(total),
+            l95_total = lower(total),
+            u95_total = upper(total)) %>%
+  ungroup() -> ffi_total_smry
+
+write_supp_table(ffi_total_smry, 'Abundance by peptide, genotype, age in FFI and control mice.')
+
+ffi_all %>% 
+  inner_join(leg, by='genotype') %>%
+  group_by(protein, peptide) %>%
+  mutate(n_ages_detected = length(unique(age))) %>%
+  filter(n_ages_detected == 2) %>%
+  ungroup() %>%
+  select(-n_ages_detected) %>%
+  group_by(protein, peptide, genotype, age) %>%
+  summarize(.groups='keep',
+            n = n(),
+            thalf_estimate = fit_isotopic_thalf(chow_days, prop_labeled)
+            ) %>%
+  ungroup() -> thalves_by_genotype_and_age
+
+write_supp_table(thalves_by_genotype_and_age, 'Protein half-life estimates by peptide, genotype, and age in FFI and control mice.')
+
 
 
 # Supplement #### 
