@@ -15,8 +15,8 @@ suppressMessages(library(plotrix))
 suppressMessages(library(magick))
 suppressMessages(library(minpack.lm))
 
-if (interactive()) setwd('~/d/sci/src/halflife')
-
+source("src/funcs.R")
+source("src/utils.R")
 
 # Output streams #### 
 
@@ -24,10 +24,7 @@ tell_user('done.\nCreating output streams...')
 
 text_stats_path = 'display_items/stats_for_text.txt'
 write(paste('Last updated: ',Sys.Date(),'\n',sep=''),text_stats_path,append=F) # start anew - but all subsequent writings will be append=T
-write_stats = function(...) {
-  write(paste(list(...),collapse='',sep=''),text_stats_path,append=T)
-  write('\n',text_stats_path,append=T)
-}
+
 
 supplement_path = 'display_items/supplement.xlsx'
 supplement = createWorkbook()
@@ -59,144 +56,8 @@ tell_user('done.\nDefining constants and functions...')
 
 dt = 0.01
 t = seq(0, 8, dt)
-
-# Functions ####
-
-## General functions ####
-upper = function(x, ci=0.95) { 
-  alpha = 1 - ci
-  sds = qnorm(1-alpha/2)
-  mean(x, na.rm=T) + sds*sd(x, na.rm=T)/sqrt(sum(!is.na(x)))
-}
-
-lower = function(x, ci=0.95) { 
-  alpha = 1 - ci
-  sds = qnorm(1-alpha/2)
-  mean(x, na.rm=T) - sds*sd(x, na.rm=T)/sqrt(sum(!is.na(x)))
-}
-
-percent = function(x, digits=0, signed=F) gsub(' ','',paste0(ifelse(x > 0 & signed, '+', ''),formatC(100*x,format='f',digits=digits),'%'))
-
-alpha = function(rgb_hexcolor, proportion) {
-  hex_proportion = sprintf("%02x",round(proportion*255))
-  rgba = paste(rgb_hexcolor,hex_proportion,sep='')
-  return (rgba)
-}
 ci_alpha = 0.35 # degree of transparency for shading confidence intervals in plot
 
-parxpdt = function(expr) {
-  par(xpd=T)
-  expr
-  par(xpd=F)
-}
-
-rbind_files = function(path, grepstring) {
-  all_files = list.files(path, full.names=T)
-  these_files = all_files[grepl(grepstring,all_files)]
-  if (exists('rbound_table')) rm('rbound_table')
-  for (this_file in these_files) {
-    this_tbl = read_delim(this_file, col_types=cols()) %>% clean_names()
-    this_tbl$file = gsub('.*\\/','',gsub('\\.[tc]sv','',this_file))
-    if (exists('rbound_table')) {
-      rbound_table = rbind(rbound_table, this_tbl)
-    } else {
-      rbound_table = this_tbl
-    }
-  }
-  return (rbound_table)
-}
-
-
-## Functions for Fig 2 ####
-
-# formula from Fornasiero 2018 Figure S3H ####
-free_lysine = function(t) {
-  pmax(0,1-0.503*(exp(-t*log(2)*0.799))-0.503*exp(-t*log(2)/39.423))
-}
-
-always_all = function(t) {
-  1
-}
-
-# avails is a function telling you what lysine is available -
-# either free_lysine or always_all
-proportion_labeled = function(thalf, t, avails) {
-  lambda = log(2) / thalf
-  proportion_heavy = numeric(length(t))
-  proportion_heavy[1] = 0
-  for (i in 2:length(t)) {
-    protein_turned_over = lambda * dt
-    original = (1 - protein_turned_over) * proportion_heavy[i - 1]
-    nascent = protein_turned_over * avails(t[i])
-    proportion_heavy[i] = original + nascent
-  }
-  return (proportion_heavy)
-}
-
-
-proportion_labeled_t_unary = function(thalf, t, which_t, avails) {
-  return (proportion_labeled(thalf, t, avails)[t==which_t])
-}
-
-proportion_labeled_t = function(thalf, t, which_t, avails) {
-  result = numeric(length(thalf))
-  for (i in 1:length(result)) {
-    result[i] = proportion_labeled(thalf[i], t, avails)[t==which_t]
-  }
-  return (result)
-}
-
-
-function_for_uniroot = function(thalf, prop_labeled, t, which_t, avails) {
-  proportion_labeled_t(thalf, t, which_t, avails) - prop_labeled
-}
-find_thalf_unary = function(prop_labeled, t=seq(0,8,.01), which_t=8, avails=free_lysine) {
-  max_possible = proportion_labeled_t(thalf=0.01, t=t, which_t=which_t, avails=avails)
-  if (prop_labeled > max_possible) {
-    return (as.numeric(NA))
-  }
-  uniroot(function_for_uniroot, lower=0.1, upper=100, tol=0.01, 
-          prop_labeled = prop_labeled, t = t, which_t = which_t, avails=avails)$root
-}
-# vectorized version
-find_thalf = function(prop_labeled, t=seq(0,8,.01), which_t=8, avails=free_lysine) {
-  result = numeric(length(prop_labeled))
-  for (i in 1:length(prop_labeled)) {
-    result[i] = find_thalf_unary(prop_labeled[i], t, which_t, avails)
-  }
-  return (result)
-}
-
-## Functions for Fig 3 ####
-interpolate_rna = function(day, rna, xout) {
-  tibble(day, rna) %>%
-    group_by(day) %>%
-    summarize(.groups='keep', rna=mean(rna)) %>%
-    ungroup() %>%
-    add_row(day=0, rna=1, .before=1) -> actual_data_points
-  approx(x=actual_data_points$day, y=actual_data_points$rna, xout=xout)$y
-}
-
-Pt = function(R, t, lambda) {
-  P = numeric(length(t))
-  dP = numeric(length(t))
-  P[1] = 1
-  for (i in 2:length(t)) {
-    dt = (t[i]- t[i-1])
-    dP[i] = lambda * dt * R[i-1] - lambda * dt * P[i-1]
-    P[i] = P[i-1] + dP[i]
-  }
-  return (P)
-}
-
-calculate_residuals = function(par, data, dt=0.01) {
-  lambda = par[['lambda']]
-  t = seq(0,max(data$day),dt)
-  R = interpolate_rna(data$day, data$rna, t)
-  P_pred = Pt(R, t, lambda)[match(data$day, t)]
-  residuals = data$protein - P_pred
-  return (residuals)
-}
 
 
 # Data ####
