@@ -39,23 +39,28 @@ Pt_mixture = function(R, t, lambdas, weights) {
 }
 
 
-proportion_labeled_mixture = function(halflives, weights, t, avails) {
+proportion_labeled_mixture = function(halflives, proportions, t, avails) {
   K = length(halflives)
   lambdas = log(2) / halflives
-  N = numeric(length(t))
-  N_components = matrix(0, nrow=length(t), ncol=K)
-  N_components[1,] = weights
-  N[1] = 1
-  for (i in 2:length(t)) {
-    for (k in 1:K) {
-      protein_turned_over = lambdas[k] * dt
-      original = (1 - protein_turned_over) * N_components[i-1, k]
-      nascent = protein_turned_over * weights[k] * avails(t[i])
-      N_components[i, k] = original + nascent
+
+  # Track each subpopulation separately
+  prop_heavy_sub = matrix(0, nrow=length(t), ncol=K)
+
+  for (k in 1:K) {
+    lambda_k = lambdas[k]
+    for (i in 2:length(t)) {
+      dt_val = t[i] - t[i-1]
+      protein_turned_over = lambda_k * dt_val
+      original = (1 - protein_turned_over) * prop_heavy_sub[i-1, k]
+      nascent = protein_turned_over * avails(t[i])
+      prop_heavy_sub[i, k] = original + nascent
     }
-    N[i] = sum(N_components[i,])
   }
-  return(list(total=N, components=N_components))
+
+  # Weight by proportions
+  total_prop_heavy = prop_heavy_sub %*% proportions
+
+  return(as.vector(total_prop_heavy))
 }
 
 
