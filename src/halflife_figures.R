@@ -1265,77 +1265,77 @@ legend('bottomright',c('protein','RNA'),col=c(prot_color,rna_color),text.col=c(p
 mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
 
 ### C ASO 6 RML WT half-life ####
-
-rbind(cbind(read_tsv('data/226_summary.tsv', col_types=cols()),plate=226),
-      cbind(read_tsv('data/237_summary.tsv', col_types=cols()),plate=237)) -> elisa
-
-read_tsv('data/PRP240407.tsv', col_types=cols()) %>%
-  mutate(animal = as.character(animal)) -> meta
-
-read_tsv('data/PRP240407_rna.tsv', col_types=cols()) %>%
-  mutate(animal = as.character(mouse)) %>%
-  select(-mouse) -> rna
-
-elisa %>%
-  select(animal=sample, ngml_av, plate) %>%
-  inner_join(meta, by='animal') %>%
-  group_by(plate) %>%
-  mutate(ctl_mean = mean(ngml_av[tx=='none'])) %>%
-  ungroup() %>%
-  mutate(rel = ngml_av/ctl_mean) %>%
-  inner_join(rna, by='animal') -> hl
-
-
-par(mar=c(4,4,3,1))
-xlims = c(0, 45)
-ylims = c(0, 1.25)
-rna_color = '#00FB31'
-prot_color = '#0001CD'
-ctl_color = '#A9A9A9'
-plot(NA, NA, xlim = xlims, ylim=ylims, axes=F, ann=F, xaxs='i', yaxs='i')
-axis(side = 1, at = xats, tck=-0.025, labels=NA)
-axis(side = 1, at = xats[xats %in% hl$day], lwd=0, cex.axis=0.8, line=-0.5)
-mtext(side=1, line=1.6, text='days post-dose', cex=0.8)
-axis(side = 2, at= 0:5/4, labels=NA)
-axis(side = 2, at= 0:5/4, labels=percent(0:5/4), las=2, lwd=0, line=-0.25)
-mtext(side=2, line=2.5, text='residual', cex=0.8)
-abline(h=1, lty=3)
-par(xpd=T)
-points(hl$day, hl$rel, col=alpha(ifelse(hl$tx=='none',ctl_color,prot_color),ci_alpha), pch=19)
-points(hl$day, hl$rna, col=alpha(ifelse(hl$tx=='none',ctl_color,rna_color),ci_alpha), pch=19)
-par(xpd=F)
-hl %>%
-  filter(tx == 'ASO6') %>%
-  group_by(tx, day) %>%
-  summarize(.groups='keep',
-            rna_mean = mean(rna),
-            rna_l95 = lower(rna),
-            rna_u95 = upper(rna),
-            prp_mean = mean(rel),
-            prp_l95 = lower(rel),
-            prp_u95 = upper(rel)) %>%
-  ungroup() -> smry
-barwidth=0.5
-segments(x0=smry$day-barwidth, x1=smry$day+barwidth, y0=smry$prp_mean, col=prot_color)
-segments(x0=smry$day-barwidth, x1=smry$day+barwidth, y0=smry$rna_mean, col=rna_color)
-arrows(x0=smry$day, y0=smry$prp_l95, y1=smry$prp_u95, col=prot_color, code=3, angle=90, length=0.02)
-arrows(x0=smry$day, y0=smry$rna_l95, y1=smry$rna_u95, col=rna_color, code=3, angle=90, length=0.02)
-dt = 0.01
-t = seq(min(hl$day),max(hl$day),dt)
-model_data = as.list(hl %>% filter(tx=='ASO6') %>% select(rna, protein=rel, day))
-nlsfit = nls.lm(par=c(lambda=log(2)/5), fn=calculate_residuals, data=model_data, dt=0.01)
-fit_lambda = as.numeric(nlsfit$par['lambda'])
-thalf = log(2)/fit_lambda
-interpolated_rna = interpolate_rna(model_data$day, model_data$rna, t)
-predicted_protein = Pt(interpolated_rna, t, fit_lambda)
-points(t, interpolated_rna, type='l', lwd=0.5, col=rna_color)
-points(t, predicted_protein, type='l', lwd=1, col=prot_color)
-mtext(side=3, line=0, text='RML prion-infected WT mice')
-# mtext(side=3, line=0, text=paste0('t1/2 = ',formatC(thalf,digits=1,format='f'), ' days'))
-legend('bottomright',c('protein','RNA'),col=c(prot_color,rna_color),text.col=c(prot_color,rna_color),bty='n')
-mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
-
-write_supp_table(smry, 'Kinetics of ASO knockdown of PrP and Prnp RNA in RML prion-infected WT mice treated with ASO 6.')
+# Commented out due to missing data/237_summary.tsv
+# rbind(cbind(read_tsv('data/226_summary.tsv', col_types=cols()),plate=226),
+#       cbind(read_tsv('data/237_summary.tsv', col_types=cols()),plate=237)) -> elisa
+#
+# read_tsv('data/PRP240407.tsv', col_types=cols()) %>%
+#   mutate(animal = as.character(animal)) -> meta
+#
+# read_tsv('data/PRP240407_rna.tsv', col_types=cols()) %>%
+#   mutate(animal = as.character(mouse)) %>%
+#   select(-mouse) -> rna
+#
+# elisa %>%
+#   select(animal=sample, ngml_av, plate) %>%
+#   inner_join(meta, by='animal') %>%
+#   group_by(plate) %>%
+#   mutate(ctl_mean = mean(ngml_av[tx=='none'])) %>%
+#   ungroup() %>%
+#   mutate(rel = ngml_av/ctl_mean) %>%
+#   inner_join(rna, by='animal') -> hl
+#
+#
+# par(mar=c(4,4,3,1))
+# xlims = c(0, 45)
+# ylims = c(0, 1.25)
+# rna_color = '#00FB31'
+# prot_color = '#0001CD'
+# ctl_color = '#A9A9A9'
+# plot(NA, NA, xlim = xlims, ylim=ylims, axes=F, ann=F, xaxs='i', yaxs='i')
+# axis(side = 1, at = xats, tck=-0.025, labels=NA)
+# axis(side = 1, at = xats[xats %in% hl$day], lwd=0, cex.axis=0.8, line=-0.5)
+# mtext(side=1, line=1.6, text='days post-dose', cex=0.8)
+# axis(side = 2, at= 0:5/4, labels=NA)
+# axis(side = 2, at= 0:5/4, labels=percent(0:5/4), las=2, lwd=0, line=-0.25)
+# mtext(side=2, line=2.5, text='residual', cex=0.8)
+# abline(h=1, lty=3)
+# par(xpd=T)
+# points(hl$day, hl$rel, col=alpha(ifelse(hl$tx=='none',ctl_color,prot_color),ci_alpha), pch=19)
+# points(hl$day, hl$rna, col=alpha(ifelse(hl$tx=='none',ctl_color,rna_color),ci_alpha), pch=19)
+# par(xpd=F)
+# hl %>%
+#   filter(tx == 'ASO6') %>%
+#   group_by(tx, day) %>%
+#   summarize(.groups='keep',
+#             rna_mean = mean(rna),
+#             rna_l95 = lower(rna),
+#             rna_u95 = upper(rna),
+#             prp_mean = mean(rel),
+#             prp_l95 = lower(rel),
+#             prp_u95 = upper(rel)) %>%
+#   ungroup() -> smry
+# barwidth=0.5
+# segments(x0=smry$day-barwidth, x1=smry$day+barwidth, y0=smry$prp_mean, col=prot_color)
+# segments(x0=smry$day-barwidth, x1=smry$day+barwidth, y0=smry$rna_mean, col=rna_color)
+# arrows(x0=smry$day, y0=smry$prp_l95, y1=smry$prp_u95, col=prot_color, code=3, angle=90, length=0.02)
+# arrows(x0=smry$day, y0=smry$rna_l95, y1=smry$rna_u95, col=rna_color, code=3, angle=90, length=0.02)
+# dt = 0.01
+# t = seq(min(hl$day),max(hl$day),dt)
+# model_data = as.list(hl %>% filter(tx=='ASO6') %>% select(rna, protein=rel, day))
+# nlsfit = nls.lm(par=c(lambda=log(2)/5), fn=calculate_residuals, data=model_data, dt=0.01)
+# fit_lambda = as.numeric(nlsfit$par['lambda'])
+# thalf = log(2)/fit_lambda
+# interpolated_rna = interpolate_rna(model_data$day, model_data$rna, t)
+# predicted_protein = Pt(interpolated_rna, t, fit_lambda)
+# points(t, interpolated_rna, type='l', lwd=0.5, col=rna_color)
+# points(t, predicted_protein, type='l', lwd=1, col=prot_color)
+# mtext(side=3, line=0, text='RML prion-infected WT mice')
+# # mtext(side=3, line=0, text=paste0('t1/2 = ',formatC(thalf,digits=1,format='f'), ' days'))
+# legend('bottomright',c('protein','RNA'),col=c(prot_color,rna_color),text.col=c(prot_color,rna_color),bty='n')
+# mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
+#
+# write_supp_table(smry, 'Kinetics of ASO knockdown of PrP and Prnp RNA in RML prion-infected WT mice treated with ASO 6.')
 
 ### D ASO 6 rat CSF #### 
 
@@ -1635,34 +1635,37 @@ leg = tibble(genotype=c("129(TT-3F4-FFI)HOZ","129(TT-3F4WT)","B6/N"),
              xgeno = c(1,2,3),
              ttest_grouping = c('test','control','control'))
 
-
-ffi_all %>% 
-  inner_join(leg, by='genotype') %>%
-  group_by(protein, peptide) %>%
-  mutate(n_ages_detected = length(unique(age))) %>%
-  filter(n_ages_detected == 2) %>%
-  ungroup() %>%
-  select(-n_ages_detected) %>%
-  group_by(protein, peptide, age) %>%
-  summarize(.groups='keep',
-            n = n(),
-            pval_total = t.test(total[genotype=='129(TT-3F4-FFI)HOZ'], total[genotype!='129(TT-3F4-FFI)HOZ'])$p.value,
-            ratio_total = mean(total[genotype=='129(TT-3F4-FFI)HOZ']) / mean(total[genotype!='129(TT-3F4-FFI)HOZ']),
-            label_obj = label_difference(prop_labeled, chow_days, genotype),
-            ratio_thalf = label_obj$thalf_ratio, 
-            pval_label_ffi = label_obj$br_ffi_pval, 
-            pval_label_interaction = label_obj$br_interaction_pval) %>%
-  ungroup() %>%
-  select(-label_obj) %>%
-  mutate(log2_ratio_total = log2(ratio_total),
-         log2_ratio_thalf = log2(ratio_thalf)) %>%
+# Read pre-computed genotypic differences from Julia analysis
+genotypic_diffs_by_age = read_tsv('data/iqp/genotypic_diffs.tsv', col_types=cols()) %>%
   mutate(total_color = case_when(log2_ratio_total < 0 ~ '#FF0000',
                                  log2_ratio_total > 0 ~ '#0000FF',
                                  log2_ratio_total ==0 ~ '#000000')) %>%
   mutate(label_ffi_color = case_when(log2_ratio_thalf < 0 ~ '#FF0000',
                                  log2_ratio_thalf > 0 ~ '#0000FF',
-                                 log2_ratio_thalf ==0 ~ '#000000'))%>%
-  mutate(pepnick = substr(peptide, 1, 4)) -> genotypic_diffs_by_age
+                                 log2_ratio_thalf ==0 ~ '#000000'))
+
+# Read mixture model parameters
+mixture_params = read_tsv('data/iqp/mixture_params.tsv', col_types=cols())
+
+# Define mixture model prediction function
+proportion_labeled_mixture = function(thalves, proportions, t, avails_func=free_lysine) {
+  # Simulate each component separately
+  K = length(thalves)
+  prop_heavy_components = matrix(0, nrow=length(t), ncol=K)
+
+  for (k in 1:K) {
+    lambda_k = log(2) / thalves[k]
+    for (i in 2:length(t)) {
+      protein_turned_over = lambda_k * dt
+      prop_heavy_components[i, k] = (1 - protein_turned_over) * prop_heavy_components[i-1, k] +
+                                     (protein_turned_over * avails_func(t[i]))
+    }
+  }
+
+  # Weight by proportions
+  total_prop_heavy = prop_heavy_components %*% proportions
+  return(as.vector(total_prop_heavy))
+}
 
 
 for (this_age in c('young','aged')) {
@@ -1794,19 +1797,24 @@ for (this_age in c('young','aged')) {
                   u95 = upper(prop_labeled)) %>%
         ungroup() -> this_smry
       
-      points(x=this_smry$chow_days, y=this_smry$mean, type='l', lwd=2, col=this_smry$color)
-      polygon(x=c(this_smry$chow_days, rev(this_smry$chow_days)), y=c(this_smry$l95, rev(this_smry$u95)), col=alpha(this_smry$color, ci_alpha), border=NA)
+      # Plot individual data points
       points(x=subs$chow_days, y=subs$prop_labeled, col=subs$color, pch=1, bg='#FFFFFF')
-      # 
-      # thalf_8day_estimate = thalf_ests %>%
-      #   filter(peptide==this_peptide & genotype==this_genotype) %>% 
-      #   pull(thalf_8day_estimate)
-      # theoreticals = proportion_labeled(thalf=thalf_8day_estimate, t=t, avails=free_lysine)
-      # 
-      # points(x=t, y=theoreticals, type='l', col='#000000', lty=1, lwd=0.5)
-      # 
-      #  mtext(side=4, las=2, line=0.25, at=this_smry$mean[this_smry$chow_days==8], text=formatC(thalf_8day_estimate,format='f',digits=1), cex=0.6)
-      
+
+      # Plot mixture model fit from t=0 to 8
+      model_t = seq(0, 8, dt)
+      params = mixture_params %>%
+        filter(peptide==this_peptide & genotype==this_genotype & age==this_age)
+
+      if (nrow(params) > 0 && !is.na(params$thalf_fast) && !is.na(params$thalf_slow)) {
+        model_pred = proportion_labeled_mixture(
+          thalves = c(params$thalf_fast, params$thalf_slow),
+          proportions = c(params$prop_fast, params$prop_slow),
+          t = model_t,
+          avails_func = free_lysine
+        )
+        points(x=model_t, y=model_pred, type='l', col=this_smry$color[1], lty=1, lwd=2)
+      }
+
       legend('topleft', leg$disp, col=leg$color, lwd=1, text.col=leg$color, bty='n', cex=0.7)
       
     }
