@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(ls:*)",
-      "Bash(julia:*)"
+      "Bash(julia:*)",
+      "Bash(Rscript:*)"
     ]
   }
 }
