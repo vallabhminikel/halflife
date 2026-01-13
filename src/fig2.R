@@ -1,6 +1,3 @@
-
-
-## Figure 2 ####
 tell_user('done.\nCreating Figure 2...')
 resx=300
 png('display_items/figure-2.png',width=6.5*resx,height=4.5*resx,res=resx)
@@ -11,33 +8,7 @@ layout(layout_matrix)
 
 panel = 1
 
-# Load baseline-subtracted data from Julia analysis
-# This ensures we plot the SAME data that models were fit on
-if (file.exists('data/crl/baseline_subtracted_data.tsv')) {
-  tell_user('Loading baseline-subtracted CRL data from Julia...')
-  crl_prot = read_tsv('data/crl/baseline_subtracted_data.tsv', col_types=cols()) %>%
-    rename(proportion_heavy = prop_labeled) %>%  # Match R column naming convention
-    inner_join(tissue_meta, by='tissue')  # Add colors from tissue_meta
-  use_julia_data = TRUE
-} else {
-  tell_user('Warning: Julia baseline-subtracted data not found. Using R-processed data from figS2.R')
-  use_julia_data = FALSE
-  # crl_prot should already exist from figS2.R
-}
-
-# Load mixture model parameters from Julia analysis
-if (file.exists('data/crl/mixture_params.tsv')) {
-  crl_mixture_params = read_tsv('data/crl/mixture_params.tsv', col_types=cols())
-  use_mixture_models_crl = TRUE
-} else {
-  use_mixture_models_crl = FALSE
-}
-
 ### A CRL percent labeled ####
-# NOTE: This plot uses baseline-subtracted data (prop_labeled has LLQ subtracted, floored at 0)
-# If available, loads Julia-processed data from data/crl/baseline_subtracted_data.tsv
-# Otherwise falls back to R-processed data from figS2.R
-# Model fits from Julia also use the same baseline-subtracted data
 
 par(mar=c(3,4,3,3))
 xlims = c(-1, 9)
@@ -59,9 +30,12 @@ mtext(side=2, line=2.5, text='proportion labeled', cex=0.8)
 points(crl_prot$day, crl_prot$proportion_heavy, col=crl_prot$color, pch=21, cex=0.5, bg='#FFFFFF')
 for (this_tissue in unique(tissue_meta$tissue)) {
   subs = crl_prot %>% filter(tissue==this_tissue)
-  # LLQ is now at 0 after baseline subtraction
-  abline(h=0, lty=3)
-  mtext(side=4, at=0, text=paste0(this_tissue,' LLQ'), cex=0.6, las=2)
+  subs %>%
+    filter(heavy==bql & day==0) %>%
+    summarize(effective_bql = max(proportion_heavy)) %>%
+    pull(effective_bql) -> ef_bql
+  abline(h=ef_bql, lty=3)
+  mtext(side=4, at=ef_bql, text=paste0(this_tissue,' LLQ'), cex=0.6, las=2)
   subs %>%
     group_by(day, color) %>%
     summarize(.groups='keep',
@@ -71,34 +45,6 @@ for (this_tissue in unique(tissue_meta$tissue)) {
   points(x=this_smry$day, y=this_smry$mean, type='l', lwd=2, col=this_smry$color)
   polygon(x=c(this_smry$day, rev(this_smry$day)), y=c(this_smry$l95, rev(this_smry$u95)), col=alpha(this_smry$color, ci_alpha), border=NA)
   mtext(side=4, at=this_smry$mean[this_smry$day==8], line=-0.25, text=this_tissue, las=2, col=this_smry$color, cex=0.8)
-
-  # Add model fits if available
-  if (use_mixture_models_crl) {
-    params = crl_mixture_params %>% filter(tissue == this_tissue)
-    if (nrow(params) > 0) {
-      t = seq(0, 8, 0.01)
-      # Single-rate model (dashed) - no offset, data already baseline-subtracted
-      if (!is.na(params$thalf_single)) {
-        pred_single = proportion_labeled(params$thalf_single, t, free_lysine)
-        points(t, pred_single, type='l', lwd=1, lty=2, col=this_smry$color[1])
-      }
-      # Mixture model (solid, thicker) - no offset, data already baseline-subtracted
-      if (!is.na(params$thalf_fast)) {
-        pred_mixture = proportion_labeled_mixture(
-          c(params$thalf_fast, params$thalf_slow),
-          c(params$prop_fast, params$prop_slow),
-          t,
-          free_lysine
-        )
-        points(t, pred_mixture, type='l', lwd=2.5, col=this_smry$color[1])
-
-        # Add delta AIC annotation
-        delta_aic_text = sprintf('ΔAIC = %.1f', params$delta_aic)
-        y_pos = ifelse(this_tissue == 'brain', 0.65, 0.30)
-        text(x=7, y=y_pos, labels=delta_aic_text, pos=2, cex=0.6, col=this_smry$color[1])
-      }
-    }
-  }
 }
 mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
 

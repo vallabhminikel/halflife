@@ -22,15 +22,7 @@ crl_prot = read_tsv('data/crl_proteomics.tsv', col_types=cols()) %>%
   mutate(heavy = replace_na(heavy, bql)) %>%
   mutate(total = light + heavy) %>%
   mutate(proportion_heavy = heavy / total) %>%
-  inner_join(tissue_meta, by ='tissue') %>%
-  # BASELINE SUBTRACTION: Subtract LLQ from all values, floor at 0
-  # For each tissue group, LLQ is the max proportion_heavy at day 0 where heavy == bql
-  # This removes baseline signal and sets LLQ to zero
-  # All subsequent analyses and plots use this adjusted data
-  group_by(tissue) %>%
-  mutate(llq_value = max(proportion_heavy[heavy == bql & day == 0])) %>%
-  mutate(proportion_heavy = pmax(0, proportion_heavy - llq_value)) %>%
-  ungroup()
+  inner_join(tissue_meta, by ='tissue')
 
 xlims = c(0.5, 2.5)
 ylims = c(0, 8)
