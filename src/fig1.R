@@ -1,0 +1,202 @@
+
+## Figure 1 #### 
+tell_user('done.\nCreating Figure 1...')
+resx=300
+png('display_items/figure-1.png',width=6.5*resx,height=5.0*resx,res=resx)
+
+layout_matrix = matrix(c(1,2,2,
+                         1,2,2,
+                         3,3,4), nrow=3, byrow=T)
+layout(layout_matrix)
+
+panel = 1
+
+
+### A GTEx #### 
+tpm = read.table('data/gtex/prnp_tpm_t.txt',header=F,skip=2)
+colnames(tpm) = c('sampid','tpm')
+tpm = as_tibble(tpm)
+
+samp = read.table('data/gtex/GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt',sep='\t',header=T,quote='',comment.char='')
+colnames(samp) = gsub('[^a-z0-9_]','_',tolower(colnames(samp)))
+samp = as_tibble(samp)
+
+meta = read_tsv('data/gtex/tissue_metatissue.tsv', col_types=cols())
+
+# brain color is too light, try fixing it
+meta %>%
+  mutate(color = case_when(color == '#EEEF4D' ~ '#CCCF00',
+                           TRUE ~ color)) -> meta
+
+
+tpm %>%
+  inner_join(samp, by='sampid') %>%
+  select(smts, smtsd, tpm) %>%
+  mutate(tpm = as.numeric(tpm)) -> tpm_by_tissue
+
+tpm_by_tissue %>%
+  group_by(smts, smtsd) %>%
+  summarize(.groups='keep', 
+            n_samples = n(),
+            median_tpm = median(tpm, na.rm=T)) %>%
+  ungroup() %>%
+  arrange(desc(median_tpm)) %>% 
+  inner_join(meta, by=c('smtsd'='dispname')) %>%
+  select(metatissue, smtsd, n_samples, median_tpm, color) -> tpm_by_tissue_smry
+
+tpm_by_tissue_smry %>%
+  group_by(metatissue) %>%
+  summarize(.groups='keep', 
+            n_tissues = n(),
+            color = first(color),
+            median_median_tpm = median(median_tpm, na.rm=T)) %>%
+  ungroup() %>%
+  arrange(desc(median_median_tpm)) %>%
+  mutate(x = row_number()) %>%
+  mutate(y = max(x) - x + 1) -> tpm_by_metatissue_smry
+
+tpm_by_metatissue_smry %>%
+  distinct(x, y, metatissue, color) -> xykey
+
+tpm_by_tissue_smry %>%
+  select(-color) %>%
+  inner_join(xykey, by=c('metatissue')) -> tpm_by_tissue_smry 
+
+par(mar=c(3,6,3,1))
+xlims = c(0, max(tpm_by_tissue_smry$median_tpm)*1.1)
+ylims = range(xykey$y) + c(-0.5, 0.5)
+xbigs = 0:10*100
+xats = 0:100*10
+plot(NA, NA, xlim=xlims, ylim=ylims, ann=F, axes=F, xaxs='i', yaxs='i')
+axis(side=1, at=xbigs, labels=NA, tck=-0.05)
+axis(side=1, at=xbigs, lwd=0, line=-0.5)
+axis(side=1, at=xats, labels=NA, tck=-0.02)
+mtext(side=1, line=1.6, text='Median TPM (GTEx v8)', cex=0.8)
+axis(side=2, at=ylims, labels=NA, lwd.ticks=0)
+mtext(side=2, line=0.25, las=2, at=xykey$y, text=xykey$metatissue, cex=0.65)
+barwidth=0.8
+rect(xleft=rep(0,nrow(tpm_by_metatissue_smry)), xright=tpm_by_metatissue_smry$median_median_tpm, 
+     ybottom = tpm_by_metatissue_smry$y - barwidth/2, ytop = tpm_by_metatissue_smry$y + barwidth/2, 
+     col=alpha(tpm_by_metatissue_smry$color, 0.7), border=NA)
+points(x=tpm_by_tissue_smry$median_tpm, y=tpm_by_tissue_smry$y, pch=21, col=tpm_by_tissue_smry$color, bg='#FFFFFF', lwd=1.5)
+mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
+
+write_supp_table(tpm_by_metatissue_smry, 'GTEx median PRNP TPM by tissue.')
+
+### B Western #### 
+par(mar=c(0.5,0,3,0.5))
+western_panel = image_convert(image_read('data/fig1b.png'),'png')
+plot(as.raster(western_panel))
+mtext(side=3, adj=-0.0, text=LETTERS[panel], line=0.5); panel = panel + 1
+
+### C large 1:100 ELISA screen #### 
+
+elisa_raw = read_tsv('data/058.tsv', col_types=cols())
+elisa_meta = tibble(genotype = c('KO','WT'),
+                    offset = c(.2, -.2),
+                    color = c('#FBC74A','#00A7CD')) %>% arrange(desc(genotype))
+use_dilution = 100
+llq = elisa_raw %>% filter(dilution==use_dilution, flag=='LLQ') %>% slice(1) %>% pull(ngml_trunc)
+elisa_raw %>%
+  filter(dilution==use_dilution, !grepl('QC',detail)) %>%
+  mutate(genotype = substr(detail, 1, 2),
+         tissue = substr(detail, 4, 20)) %>% 
+  inner_join(elisa_meta, by='genotype') %>%
+  mutate(ngml_use = pmax(llq, case_when(flag=='LLQ' ~ ngml_trunc,
+                                        TRUE ~ ngml))) %>%
+  group_by(genotype, tissue, offset, color) %>%
+  summarize(.groups='keep', 
+            ngml_av = mean(ngml_use)) %>%
+  ungroup() -> elisa_ready
+
+elisa_ready %>%
+  filter(genotype=="WT") %>%
+  arrange(desc(ngml_av)) %>%
+  mutate(x = row_number()) %>%
+  mutate(y = max(x) - x + 1) %>%
+  distinct(x, y, tissue) -> tissue_meta
+
+elisa_ready %>%
+  inner_join(tissue_meta, by='tissue') -> elisa_ready
+
+
+par(mar=c(3,3,3,3))
+ylims = c(0, max(elisa_ready$ngml_av)*1.1)
+xlims = range(tissue_meta$x) + c(-0.5, 0.5)
+ybigs = 0:10*10
+yats = 0:100
+plot(NA, NA, xlim=xlims, ylim=ylims, ann=F, axes=F, xaxs='i', yaxs='i')
+axis(side=2, at=ybigs, labels=NA, tck=-0.05)
+axis(side=2, at=ybigs, lwd=0, las=2, line=-0.5)
+axis(side=2, at=yats, labels=NA, tck=-0.02)
+mtext(side=2, line=1.6, text='PrP (ng/mL)', cex=0.8)
+axis(side=1, at=xlims, labels=NA, lwd.ticks=0)
+par(xpd=T)
+text(x=tissue_meta$x, y=-2, adj=1, srt=45, labels=tolower(tissue_meta$tissue), cex=0.8)
+par(xpd=F)
+abline(h=llq, lty=3)
+mtext(side=4, at=llq, las=2, text='LLQ', cex=0.8)
+barwidth = 0.4
+rect(xleft=elisa_ready$x + elisa_ready$offset - barwidth/2, 
+     xright=elisa_ready$x + elisa_ready$offset + barwidth/2,
+     ybottom = rep(0, nrow(elisa_ready)),
+     ytop = elisa_ready$ngml_av, col=elisa_ready$color, border=NA)
+legend('topright', elisa_meta$genotype, pch=15, col=elisa_meta$color, bty='n', cex=0.8)
+mtext(side=3, adj=-0.0, text=LETTERS[panel], line=0.5); panel = panel + 1
+
+
+
+
+
+### D refined 1:25 ELISA screen #### 
+elisa_meta = tibble(animal = c('87488.1','91831.1'),
+                    genotype = c('KO','WT'),
+                    offset = c(.2, -.2),
+                    color = c('#FBC74A','#00A7CD')) %>% arrange(desc(genotype))
+alt_colors = c('#780909','#0001CD')
+tissue_meta = tibble(tissue = c('Colon','Uterus','Heart','Spleen','Quad'),
+                     x = 1:5) %>%
+  mutate(y = max(x) - x + 1)
+elisa_raw = read_tsv('data/061.tsv', col_types=cols())
+use_dilution = 25
+llq = elisa_raw %>% filter(dilution==use_dilution, flag=='LLQ') %>% slice(1) %>% pull(ngml_trunc)
+elisa_raw %>%
+  filter(dilution==use_dilution) %>%
+  mutate(animal = substr(detail, 1, 7),
+         tissue = substr(detail, 9, 20)) %>% 
+  inner_join(elisa_meta, by='animal') %>%
+  mutate(ngml_use = pmax(llq, case_when(flag=='LLQ' ~ ngml_trunc,
+                                        TRUE ~ ngml))) %>%
+  group_by(genotype, tissue, offset, color) %>%
+  summarize(.groups='keep', 
+            ngml_av = mean(ngml_use)) %>%
+  inner_join(tissue_meta, by='tissue') -> elisa_ready
+
+
+par(mar=c(3,3,3,3))
+ylims = c(0, max(elisa_ready$ngml_av)*1.1)
+xlims = range(tissue_meta$x) + c(-0.5, 0.5)
+ybigs = 0:10
+yats = 0:100/10
+plot(NA, NA, xlim=xlims, ylim=ylims, ann=F, axes=F, xaxs='i', yaxs='i')
+axis(side=2, at=ybigs, labels=NA, tck=-0.05)
+axis(side=2, at=ybigs, lwd=0, las=2, line=-0.5)
+axis(side=2, at=yats, labels=NA, tck=-0.02)
+mtext(side=2, line=1.6, text='PrP (ng/mL)', cex=0.8)
+axis(side=1, at=xlims, labels=NA, lwd.ticks=0)
+par(xpd=T)
+text(x=tissue_meta$x, y=-0.25, adj=1, srt=45, labels=tolower(tissue_meta$tissue), cex=0.8)
+par(xpd=F)
+abline(h=llq, lty=3)
+mtext(side=4, at=llq, las=2, text='LLQ', cex=0.8)
+barwidth = 0.4
+rect(xleft=elisa_ready$x + elisa_ready$offset - barwidth/2, 
+     xright=elisa_ready$x + elisa_ready$offset + barwidth/2,
+     ybottom = rep(0, nrow(elisa_ready)),
+     ytop = elisa_ready$ngml_av, col=elisa_ready$color, border=NA)
+legend('topright', elisa_meta$genotype, pch=15, col=elisa_meta$color, bty='n', cex=0.8)
+mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
+
+
+silence_is_golden = dev.off()
+### end Figure 1 #### 
