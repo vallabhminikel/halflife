@@ -102,10 +102,6 @@ if (use_mixture_models) {
       weights = c(params$prop_fast, params$prop_slow)
     )$total
     points(t, predicted_mixture, type='l', lwd=2, col=prot_color)
-
-    # Add delta AIC annotation
-    delta_aic_text = sprintf('ΔAIC = %.1f', params$delta_aic)
-    text(x=max(hl$day)*0.95, y=0.95, labels=delta_aic_text, pos=2, cex=0.7, col='#666666')
   }
 }
 mtext(side=3, line=0, text='naive WT mice')
@@ -159,7 +155,7 @@ prot_color = '#0001CD'
 ctl_color = '#A9A9A9'
 plot(NA, NA, xlim = xlims, ylim=ylims, axes=F, ann=F, xaxs='i', yaxs='i')
 axis(side = 1, at = xats, tck=-0.025, labels=NA)
-axis(side = 1, at = xats[xats %in% hl$day], lwd=0, cex.axis=0.8, line=-0.5)
+axis(side = 1, at = xats, lwd=0, cex.axis=0.8, line=-0.5)
 mtext(side=1, line=1.6, text='days post-dose', cex=0.8)
 axis(side = 2, at= 0:5/4, labels=NA)
 axis(side = 2, at= 0:5/4, labels=percent(0:5/4), las=2, lwd=0, line=-0.25)
@@ -187,6 +183,7 @@ dt = 0.01
 t = seq(min(hl$day),max(hl$day),dt)
 model_data = as.list(hl %>% filter(tx!='PBS') %>% select(rna, protein=rel, day))
 
+
 # Always plot RNA
 interpolated_rna = interpolate_rna(model_data$day, model_data$rna, t)
 points(t, interpolated_rna, type='l', lwd=0.5, col=rna_color)
@@ -209,9 +206,6 @@ if (use_mixture_models) {
     )$total
     points(t, predicted_mixture, type='l', lwd=2, col=prot_color)
 
-    # Add delta AIC annotation
-    delta_aic_text = sprintf('ΔAIC = %.1f', params$delta_aic)
-    text(x=max(hl$day)*0.95, y=0.95, labels=delta_aic_text, pos=2, cex=0.7, col='#666666')
   }
 }
 mtext(side=3, line=0, text='naive ki817 mice')
@@ -239,48 +233,46 @@ elisa %>%
   ungroup() %>%
   mutate(rel = ngml_av/ctl_mean) %>%
   inner_join(rna, by='animal') -> hl
+  par(mar=c(4,4,3,1))
+  xlims = c(0, 45)
+  ylims = c(0, 1.4)
+  rna_color = '#00FB31'
+  prot_color = '#0001CD'
+  ctl_color = '#A9A9A9'
+  plot(NA, NA, xlim = xlims, ylim=ylims, axes=F, ann=F, xaxs='i', yaxs='i')
+  axis(side = 1, at = xats, tck=-0.025, labels=NA)
+  axis(side = 1, at = xats, lwd=0, cex.axis=0.8, line=-0.5)
+  mtext(side=1, line=1.6, text='days post-dose', cex=0.8)
+  axis(side = 2, at= 0:7/5, labels=NA)
+  axis(side = 2, at= 0:7/5, labels=percent(0:7/5), las=2, lwd=0, line=-0.25)
+  mtext(side=2, line=2.5, text='residual', cex=0.8)
+  abline(h=1, lty=3)
+  par(xpd=T)
+  points(hl$day, hl$rel, col=alpha(ifelse(hl$tx=='none',ctl_color,prot_color),ci_alpha), pch=19)
+  points(hl$day, hl$rna, col=alpha(ifelse(hl$tx=='none',ctl_color,rna_color),ci_alpha), pch=19)
+  par(xpd=F)
+  hl %>%
+    filter(tx == 'ASO6') %>%
+    group_by(tx, day) %>%
+    summarize(.groups='keep',
+              rna_mean = mean(rna),
+              rna_l95 = lower(rna),
+              rna_u95 = upper(rna),
+              prp_mean = mean(rel),
+              prp_l95 = lower(rel),
+              prp_u95 = upper(rel)) %>%
+    ungroup() -> smry
+  barwidth=0.5
+  segments(x0=smry$day-barwidth, x1=smry$day+barwidth, y0=smry$prp_mean, col=prot_color)
+  segments(x0=smry$day-barwidth, x1=smry$day+barwidth, y0=smry$rna_mean, col=rna_color)
+  arrows(x0=smry$day, y0=smry$prp_l95, y1=smry$prp_u95, col=prot_color, code=3, angle=90, length=0.02)
+  arrows(x0=smry$day, y0=smry$rna_l95, y1=smry$rna_u95, col=rna_color, code=3, angle=90, length=0.02)
+  dt = 0.01
+  t = seq(min(hl$day),max(hl$day),dt)
+  model_data = as.list(hl %>% filter(tx=='ASO6') %>% select(rna, protein=rel, day))
 
-
-par(mar=c(4,4,3,1))
-xlims = c(0, 45)
-ylims = c(0, 1.25)
-rna_color = '#00FB31'
-prot_color = '#0001CD'
-ctl_color = '#A9A9A9'
-plot(NA, NA, xlim = xlims, ylim=ylims, axes=F, ann=F, xaxs='i', yaxs='i')
-axis(side = 1, at = xats, tck=-0.025, labels=NA)
-axis(side = 1, at = xats[xats %in% hl$day], lwd=0, cex.axis=0.8, line=-0.5)
-mtext(side=1, line=1.6, text='days post-dose', cex=0.8)
-axis(side = 2, at= 0:5/4, labels=NA)
-axis(side = 2, at= 0:5/4, labels=percent(0:5/4), las=2, lwd=0, line=-0.25)
-mtext(side=2, line=2.5, text='residual', cex=0.8)
-abline(h=1, lty=3)
-par(xpd=T)
-points(hl$day, hl$rel, col=alpha(ifelse(hl$tx=='none',ctl_color,prot_color),ci_alpha), pch=19)
-points(hl$day, hl$rna, col=alpha(ifelse(hl$tx=='none',ctl_color,rna_color),ci_alpha), pch=19)
-par(xpd=F)
-hl %>%
-  filter(tx == 'ASO6') %>%
-  group_by(tx, day) %>%
-  summarize(.groups='keep',
-            rna_mean = mean(rna),
-            rna_l95 = lower(rna),
-            rna_u95 = upper(rna),
-            prp_mean = mean(rel),
-            prp_l95 = lower(rel),
-            prp_u95 = upper(rel)) %>%
-  ungroup() -> smry
-barwidth=0.5
-segments(x0=smry$day-barwidth, x1=smry$day+barwidth, y0=smry$prp_mean, col=prot_color)
-segments(x0=smry$day-barwidth, x1=smry$day+barwidth, y0=smry$rna_mean, col=rna_color)
-arrows(x0=smry$day, y0=smry$prp_l95, y1=smry$prp_u95, col=prot_color, code=3, angle=90, length=0.02)
-arrows(x0=smry$day, y0=smry$rna_l95, y1=smry$rna_u95, col=rna_color, code=3, angle=90, length=0.02)
-dt = 0.01
-t = seq(min(hl$day),max(hl$day),dt)
-model_data = as.list(hl %>% filter(tx=='ASO6') %>% select(rna, protein=rel, day))
-
-# Always plot RNA
-interpolated_rna = interpolate_rna(model_data$day, model_data$rna, t)
+  # Always plot RNA
+  interpolated_rna = interpolate_rna(model_data$day, model_data$rna, t)
 points(t, interpolated_rna, type='l', lwd=0.5, col=rna_color)
 
 # Always fit and plot single-rate model (thin dashed line)
@@ -301,9 +293,6 @@ if (use_mixture_models) {
     )$total
     points(t, predicted_mixture, type='l', lwd=2, col=prot_color)
 
-    # Add delta AIC annotation
-    delta_aic_text = sprintf('ΔAIC = %.1f', params$delta_aic)
-    text(x=max(hl$day)*0.95, y=0.95, labels=delta_aic_text, pos=2, cex=0.7, col='#666666')
   }
 }
 mtext(side=3, line=0, text='RML prion-infected WT mice')
@@ -384,3 +373,8 @@ mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
 write_supp_table(rhl_smry, 'Kinetics of PrP in rat brain and CSF following ASO 6 dosing.')
 
 silence_is_golden = dev.off() ### End Figure 3 ####
+
+# Write mixture model results to supplementary table
+if (use_mixture_models && exists('aso_mixture_params')) {
+  write_supp_table(aso_mixture_params, 'Mixture model parameters for ASO knockdown experiments (single-rate vs mixture model comparison).')
+}

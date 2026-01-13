@@ -9,7 +9,7 @@ export residual_decay_single, residual_decay_mixture
 export fit_single_isotopic, fit_mixture_isotopic
 export fit_single_residual, fit_mixture_residual
 export calculate_aic, calculate_bic, runs_test_residuals
-export effective_halflife, effective_halflife_residual
+export effective_halflife
 
 # ============================================================================
 # CONSTANTS
@@ -350,7 +350,7 @@ function fit_mixture_residual(days, rna, protein)
     w2 = 1 - w1
 
     # Use residual-specific effective halflife calculation
-    eff_thalf = effective_halflife_residual(R_interp, [t1, t2], [w1, w2])
+    eff_thalf = effective_halflife([t1, t2], [w1, w2])
 
     # Calculate AIC/BIC
     n = length(days)
@@ -396,80 +396,6 @@ function calculate_bic(rss, n, k)
     return n * log(rss/n) + k * log(n)
 end
 
-"""
-Perform runs test on residuals to detect systematic patterns
-
-Parameters:
-- residuals: Vector of residuals (observed - predicted)
-
-Returns: NamedTuple with (stat, p, n_runs)
-"""
-function runs_test_residuals(residuals)
-    resids = filter(x -> !isnan(x) && x != 0, residuals)
-    length(resids) < 3 && return (stat=NaN, p=NaN, n_runs=0)
-
-    try
-        log_resids = log.(abs.(resids) .+ 1e-10)
-        rt = RunsTest(log_resids)
-        return (stat=rt.z, p=pvalue(rt), n_runs=rt.n_runs)
-    catch
-        return (stat=NaN, p=NaN, n_runs=0)
-    end
-end
-
-"""
-Calculate effective half-life for residual decay mixture model
-
-For residual decay (dP/dt = λR(t) - λP), protein reaches a new steady state
-based on final RNA levels (not zero). The effective half-life is the time to
-reach 50% of the difference between initial (100%) and final steady state.
-
-If P(0) = 1.0 and P(∞) = 0.3, then effective t½ is when:
-P(t) = P(0) - 0.5 × [P(0) - P(∞)] = 1.0 - 0.5 × 0.7 = 0.65
-
-Parameters:
-- R_interp: RNA interpolation function
-- thalves: Vector of half-lives for each component
-- weights: Vector of weight proportions for each component
-
-Returns: Effective half-life (days)
-"""
-function effective_halflife_residual(R_interp, thalves, weights)
-    lambdas = [log(2)/t for t in thalves]
-
-    # Simulate mixture model over extended time range to reach steady state
-    t_max = maximum(thalves) * 10  # Extend well beyond slowest component
-    t_sim = 0:dt:t_max
-
-    try
-        result = residual_decay_mixture(R_interp, lambdas, weights, t_sim)
-        P_total = result.total
-
-        # Initial and final (steady state) values
-        P_initial = P_total[1]  # Should be ~1.0
-        P_final = P_total[end]  # Asymptotic value based on final RNA
-
-        # Check if protein is decaying (not increasing or stable)
-        if P_final >= P_initial * 0.99  # Allow 1% tolerance
-            # Protein not decaying sufficiently - return NaN
-            return NaN
-        end
-
-        # Target: 50% of the way from initial to final
-        P_target = P_initial - 0.5 * (P_initial - P_final)
-
-        # Find first time where P_total crosses P_target (going down)
-        idx = findfirst(p -> p <= P_target, P_total)
-        if idx === nothing
-            # Never reached target - return NaN
-            return NaN
-        else
-            return t_sim[idx]
-        end
-    catch e
-        return NaN
-    end
-end
 
 """
 Calculate effective half-life for simple exponential mixture model
@@ -485,7 +411,7 @@ Returns: Effective half-life (days)
 """
 function effective_halflife(thalves, proportions)
     # Mixture remaining at time t: sum(prop[i] * 0.5^(t/thalf[i]))
-    mix_rem(t) = sum(proportions[i] * (0.5^(t/thalves[i])) for i in 1:length(thalves))
+    mix_rem(t) = sum(proportions[i] * (0.5^(t/thalves[i])) for i in eachindex(thalves))
     eff_obj(t) = abs(mix_rem(t) - 0.5)
 
     try

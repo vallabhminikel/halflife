@@ -67,9 +67,20 @@ ffi_all %>%
   group_by(protein, peptide, genotype, age) %>%
   summarize(.groups='keep',
             n = n(),
-            thalf_estimate = fit_isotopic_thalf(chow_days, prop_labeled)
+            thalf_single_rate = fit_isotopic_thalf(chow_days, prop_labeled)
             ) %>%
   ungroup() -> thalves_by_genotype_and_age
+
+# Join with mixture model results from Julia
+mixture_model_results = read_tsv('display_items/table-mixture-model-results.tsv', col_types=cols())
+
+thalves_by_genotype_and_age = thalves_by_genotype_and_age %>%
+  inner_join(mixture_model_results %>% 
+               select(protein, peptide, genotype, age, 
+                      thalf_fast, prop_fast, thalf_slow, prop_slow, 
+                      thalf_mixture_effective = thalf_effective,
+                      aic_single, aic_mixture, delta_aic),
+             by = c("protein", "peptide", "genotype", "age"))
 
 write_supp_table(thalves_by_genotype_and_age, 'Protein half-life estimates by peptide, genotype, and age in FFI and control mice.')
 

@@ -208,3 +208,23 @@ calculate_residuals = function(par, data, dt=0.01) {
   residuals = data$protein - P_pred
   return (residuals)
 }
+
+
+
+label_difference = function(prop_labeled, chow_days, genotype) {
+  # consolidate into 1 vs. 1 comparison of FFI vs. both control groups
+  grp = case_when(genotype=='129(TT-3F4-FFI)HOZ' ~ 'FFI',
+                  genotype!='129(TT-3F4-FFI)HOZ' ~ 'controls')
+  # halflife calculation
+  test_grp_thalf = fit_isotopic_thalf(chow_days[grp=='FFI'], prop_labeled[grp=='FFI'])
+  ctrl_grp_thalf = fit_isotopic_thalf(chow_days[grp=='controls'], prop_labeled[grp=='controls'])
+  thalf_ratio = test_grp_thalf/ctrl_grp_thalf
+  # betareg model
+  prop_labeled = pmin(pmax(prop_labeled,1e-6),1-1e-6) # betareg rejects 0 values so allow 1 ppm tolerance
+  br_obj = betareg(prop_labeled ~ chow_days * grp)
+  br_ffi_pval = summary(br_obj)$coefficients$mean['grpFFI','Pr(>|z|)']
+  br_interaction_pval = summary(br_obj)$coefficients$mean['chow_days:grpFFI','Pr(>|z|)']
+  # edit the return statement to decide which to use
+  return (tibble(thalf_ratio=thalf_ratio, br_ffi_pval=br_ffi_pval, br_interaction_pval=br_interaction_pval))
+}
+

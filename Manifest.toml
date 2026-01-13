@@ -1,8 +1,8 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.12.2"
+julia_version = "1.12.4"
 manifest_format = "2.0"
-project_hash = "dc700827a9c1dc066eded737e24f21ccd1167eee"
+project_hash = "e51451d3d56e4e83374d817b43eb523bdc9988eb"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "8b2b045b22740e4be20654175cc38291d48539db"
@@ -898,6 +898,12 @@ deps = ["Random"]
 uuid = "9fa8497b-333b-5362-9e8d-4d0656e87820"
 version = "1.11.0"
 
+[[deps.GLM]]
+deps = ["Distributions", "LinearAlgebra", "Printf", "Reexport", "SparseArrays", "SpecialFunctions", "Statistics", "StatsAPI", "StatsBase", "StatsFuns", "StatsModels"]
+git-tree-sha1 = "c5432ee4f7817ec542fa7cda3d96745880903606"
+uuid = "38e38edf-8417-5370-95a0-9cbb8c7f171a"
+version = "1.9.2"
+
 [[deps.GPUArraysCore]]
 deps = ["Adapt"]
 git-tree-sha1 = "83cf05ab16a73219e5f6bd1bdfa9848fa24ac627"
@@ -1458,7 +1464,7 @@ uuid = "dbe65cb8-6be2-42dd-bbc5-4196aaced4f4"
 version = "2.1.0"
 
 [[deps.MixedHalfLife]]
-deps = ["CSV", "CairoMakie", "Colors", "DataFrames", "Distributions", "HypothesisTests", "Interpolations", "LaTeXStrings", "LinearAlgebra", "MCMCChains", "NNlib", "Optim", "PrettyTables", "Statistics", "Turing"]
+deps = ["CSV", "CairoMakie", "Colors", "DataFrames", "Distributions", "GLM", "HypothesisTests", "Interpolations", "LaTeXStrings", "LinearAlgebra", "MCMCChains", "NNlib", "Optim", "PrettyTables", "Printf", "Statistics", "Turing"]
 path = "."
 uuid = "a2ed6a5e-96a6-440e-bd2e-f64b57a6e44e"
 version = "0.1.0"
@@ -1481,7 +1487,7 @@ version = "0.3.7"
 
 [[deps.MozillaCACerts_jll]]
 uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
-version = "2025.5.20"
+version = "2025.11.4"
 
 [[deps.NLSolversBase]]
 deps = ["ADTypes", "DifferentiationInterface", "Distributed", "FiniteDiff", "ForwardDiff"]
@@ -1732,7 +1738,7 @@ version = "0.44.2+0"
 [[deps.Pkg]]
 deps = ["Artifacts", "Dates", "Downloads", "FileWatching", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "Random", "SHA", "TOML", "Tar", "UUIDs", "p7zip_jll"]
 uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
-version = "1.12.0"
+version = "1.12.1"
 weakdeps = ["REPL"]
 
     [deps.Pkg.extensions]
@@ -2117,6 +2123,11 @@ deps = ["Distributed", "Mmap", "Random", "Serialization"]
 uuid = "1a1011a3-84de-559e-8e89-a11a2f7dc383"
 version = "1.11.0"
 
+[[deps.ShiftedArrays]]
+git-tree-sha1 = "503688b59397b3307443af35cd953a13e8005c16"
+uuid = "1277b4bf-5013-50f5-be3d-901d8477a67a"
+version = "2.0.0"
+
 [[deps.Showoff]]
 deps = ["Dates", "Grisu"]
 git-tree-sha1 = "91eddf657aca81df9ae6ceb20b959ae5653ad1de"
@@ -2277,6 +2288,12 @@ weakdeps = ["ChainRulesCore", "InverseFunctions"]
     [deps.StatsFuns.extensions]
     StatsFunsChainRulesCoreExt = "ChainRulesCore"
     StatsFunsInverseFunctionsExt = "InverseFunctions"
+
+[[deps.StatsModels]]
+deps = ["DataAPI", "DataStructures", "LinearAlgebra", "Printf", "REPL", "ShiftedArrays", "SparseArrays", "StatsAPI", "StatsBase", "StatsFuns", "Tables"]
+git-tree-sha1 = "b12d37d25a2378f01abba02591cfd39a6cc4936f"
+uuid = "3eaba693-59b7-5ba5-a881-562e759f1c8d"
+version = "0.7.8"
 
 [[deps.StringManipulation]]
 deps = ["PrecompileTools"]

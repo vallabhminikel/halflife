@@ -22,17 +22,41 @@ leg = tibble(genotype=c("129(TT-3F4-FFI)HOZ","129(TT-3F4WT)","B6/N"),
              xgeno = c(1,2,3),
              ttest_grouping = c('test','control','control'))
 
-# Read pre-computed genotypic differences from Julia analysis
-genotypic_diffs_by_age = read_tsv('data/iqp/genotypic_diffs.tsv', col_types=cols()) %>%
+# Read pre-computed genotypic differences from Julia analysis for thalf_effective
+genotypic_diffs_julia = read_tsv('data/fig4/genotypic_diffs.tsv', col_types=cols()) %>%
+  select(protein, peptide, age, ratio_thalf_julia = ratio_thalf)
+
+ffi_all %>% 
+  inner_join(leg, by='genotype') %>%
+  group_by(protein, peptide) %>%
+  mutate(n_ages_detected = length(unique(age))) %>%
+  filter(n_ages_detected == 2) %>%
+  ungroup() %>%
+  select(-n_ages_detected) %>%
+  group_by(protein, peptide, age) %>%
+  summarize(.groups='keep',
+            n = n(),
+            pval_total = t.test(total[ttest_grouping=='test'], total[ttest_grouping=='control'])$p.value,
+            ratio_total = mean(total[ttest_grouping=='test']) / mean(total[ttest_grouping=='control']),
+            label_obj = label_difference(prop_labeled, chow_days, genotype),
+            pval_label_ffi = label_obj$br_ffi_pval, 
+            pval_label_interaction = label_obj$br_interaction_pval) %>%
+  ungroup() %>%
+  select(-label_obj) %>%
+  left_join(genotypic_diffs_julia, by = c("protein", "peptide", "age")) %>%
+  mutate(ratio_thalf = ratio_thalf_julia) %>% # Use Julia's ratio
+  mutate(log2_ratio_total = log2(ratio_total),
+         log2_ratio_thalf = log2(ratio_thalf)) %>%
   mutate(total_color = case_when(log2_ratio_total < 0 ~ '#FF0000',
                                  log2_ratio_total > 0 ~ '#0000FF',
                                  log2_ratio_total ==0 ~ '#000000')) %>%
   mutate(label_ffi_color = case_when(log2_ratio_thalf < 0 ~ '#FF0000',
                                      log2_ratio_thalf > 0 ~ '#0000FF',
-                                     log2_ratio_thalf ==0 ~ '#000000'))
+                                     log2_ratio_thalf ==0 ~ '#000000'))%>%
+  mutate(pepnick = substr(peptide, 1, 4)) -> genotypic_diffs_by_age
 
 # Read mixture model parameters
-mixture_params = read_tsv('data/iqp/mixture_params.tsv', col_types=cols())
+mixture_params = read_tsv('data/fig4/table-mixture-model-results.tsv', col_types=cols())
 
 # Define mixture model prediction function
 proportion_labeled_mixture = function(thalves, proportions, t, avails_func=free_lysine) {
@@ -121,10 +145,7 @@ for (this_age in c('young','aged')) {
   axis(side=1, at=xbigs, lwd=0, line=-0.25)
   axis(side=1, at=xats, labels=NA, tck=-0.02)
   mtext(side=1, line=1.6, text='L2FC half-life', cex=0.6)
-  # axis(side=2, at=ybigs, labels=NA, tck=-0.05)
-  # axis(side=2, at=ybigs, labels=ybiglabs, lwd=0, las=2, line=-0.5)
   axis(side=2, at=yats, labels=NA, tck=-0.02)
-  #mtext(side=2, line=1.6, text='-log10(P)')
   abline(h=-log10(0.05 / nrow(ffi)))
   par(xpd=T)
   points(x=ffi$log2_ratio_thalf, y=pmin(-log10(ffi$pval_label_ffi), max(ylims)), pch=20, col=ffi$label_ffi_color)
@@ -132,11 +153,15 @@ for (this_age in c('young','aged')) {
     filter(protein=='PRNP') -> to_label
   # amazingly, bquote is not vectorized? the only way to do this is in a loop??
   # text(x=to_label$log2_ratio_total, y=pmin(-log10(to_label$pval_total), max(ylims)), pos=4, labels=bquote(italic(.(to_label$protein)) * ' ' * .(to_label$pepnick)), cex=0.6)
-  points(x=to_label$log2_ratio_thalf, y=pmin(-log10(to_label$pval_label_ffi)), pch=1)
+  points(x=to_label$log2_ratio_thalf, y=pmin(-log10(to_label$pval_label_ffi), max(ylims)), pch=1)
   for (i in 1:nrow(to_label)) {
-    text(x=to_label$log2_ratio_thalf[i], y=pmin(-log10(to_label$pval_label_ffi[i]), max(ylims)), 
-         pos=ifelse(to_label$pepnick[i]=='VVEQ' & panel==6, 2, 4), # cheat to avoid label overlap 
-         labels=bquote(italic(.(to_label$protein[i])) * ' ' * .(to_label$pepnick[i])), cex=0.6)
+    is_vveq_f_panel = to_label$pepnick[i] == 'VVEQ' & panel == 6
+    text(x=to_label$log2_ratio_thalf[i], 
+      y=pmin(-log10(to_label$pval_label_ffi[i]), max(ylims)), 
+      pos=ifelse(is_vveq_f_panel, 3, 4), # Keep original left/right positioning
+      adj=if (is_vveq_f_panel) c(1.5, -0.5) else NULL, # Nudge VVEQ only
+      labels=bquote(italic(.(to_label$protein[i])) * ' ' * .(to_label$pepnick[i])), 
+      cex=0.6)
   }
   par(xpd=F)
   mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
@@ -162,7 +187,7 @@ for (this_age in c('young','aged')) {
     axis(side=1, at=xbigs, labels=NA, tck=-0.05)
     axis(side=1, at=xbigs, lwd=0, line=-0.25)
     axis(side=1, at=xats, labels=NA, tck=-0.02)
-    mtext(side=1, line=1.6, text='day')
+    mtext(side=1, line=1.6, text='day', cex=0.6)
     axis(side=2, at=yats, labels=NA, tck=-0.02)
     if (first_panel) {
       axis(side=2, at=ybigs, labels=NA, tck=-0.05)

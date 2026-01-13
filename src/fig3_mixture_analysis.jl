@@ -119,7 +119,6 @@ function analyze_aso_panel(panel_name, days, rna, protein)
     # Calculate single model diagnostics
     aic_single = NaN
     bic_single = NaN
-    runs_pvalue_single = NaN
 
     if !isnan(thalf_single)
         # Create RNA interpolation (same as in fit function)
@@ -141,10 +140,6 @@ function analyze_aso_panel(panel_name, days, rna, protein)
         k_single = 2  # lambda, sigma
         aic_single = calculate_aic(rss_single, n, k_single)
         bic_single = calculate_bic(rss_single, n, k_single)
-
-        # Runs test
-        runs_result = runs_test_residuals(resid_single)
-        runs_pvalue_single = runs_result.p
     end
 
     # Fit mixture model
@@ -165,7 +160,6 @@ function analyze_aso_panel(panel_name, days, rna, protein)
         thalf_single = thalf_single,
         aic_single = aic_single,
         bic_single = bic_single,
-        runs_pvalue_single = runs_pvalue_single,
 
         # Mixture model
         thalf_fast = mix.thalves[1],
@@ -199,9 +193,6 @@ function generate_report(results)
             @printf("  Single-rate model:\n")
             @printf("    t½ = %.2f days\n", row.thalf_single)
             @printf("    AIC = %.1f, BIC = %.1f\n", row.aic_single, row.bic_single)
-            if !isnan(row.runs_pvalue_single)
-                @printf("    Runs test p = %.4f\n", row.runs_pvalue_single)
-            end
         else
             println("  Single-rate model: FAILED")
         end

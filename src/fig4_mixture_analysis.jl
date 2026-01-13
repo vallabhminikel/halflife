@@ -1,6 +1,6 @@
 include("TurnoverModels.jl")
 using .TurnoverModels
-using DataFrames, CSV, HypothesisTests, Printf, Distributions, Colors
+using DataFrames, CSV, Printf, Distributions, Colors, GLM
 
 # ============================================================================
 # CORE ANALYSIS PIPELINE
@@ -27,17 +27,30 @@ function analyze_turnover_models(df)
 
         mix = fit_mixture_isotopic(days, props)
 
-        runs_stat = (stat=NaN, p=NaN, n_runs=0, n_pos=0, n_neg=0)
+        # Calculate AIC for both models
+        aic_single = NaN
+        aic_mixture = NaN
+        delta_aic = NaN
+        
         if !isnan(t_single)
-            preds = proportion_labeled_single(t_single, days)
-            resids = props .- preds
-            log_resids = log.(abs.(resids) .+ 1e-10)
-
-            try
-                rt = RunsTest(log_resids)
-                runs_stat = (stat=rt.z, p=pvalue(rt), n_runs=rt.n_runs, n_pos=rt.n1, n_neg=rt.n0)
-            catch
-            end
+            preds_single = proportion_labeled_single(t_single, days)
+            rss_single = sum((props .- preds_single).^2)
+            n = length(days)
+            k_single = 1  # Single model has 1 parameter (thalf)
+            aic_single = calculate_aic(rss_single, n, k_single)
+        end
+        
+        if !isnan(mix.effective_thalf)
+            preds_mixture = proportion_labeled_mixture(mix.thalves, mix.proportions, days)
+            rss_mixture = sum((props .- preds_mixture).^2)
+            n = length(days)
+            k_mixture = 3  # Mixture model has 3 parameters (thalf1, thalf2, prop1)
+            aic_mixture = calculate_aic(rss_mixture, n, k_mixture)
+        end
+        
+        # Delta AIC = AIC_mixture - AIC_single (negative means mixture is better)
+        if !isnan(aic_single) && !isnan(aic_mixture)
+            delta_aic = aic_mixture - aic_single
         end
 
         push!(results, (
@@ -56,10 +69,11 @@ function analyze_turnover_models(df)
 
             # Comparison
             model_ratio     = isnan(t_single) ? NaN : mix.effective_thalf / t_single,
-
-            # Residual Stats
-            runs_pvalue     = runs_stat.p,
-            runs_n          = runs_stat.n_runs
+            
+            # Model Selection
+            aic_single      = aic_single,
+            aic_mixture     = aic_mixture,
+            delta_aic       = delta_aic
         ))
     end
     return results
@@ -87,26 +101,12 @@ function compute_genotypic_differences(raw_df, results_df, leg_df)
         raw_ffi = raw_sub.total[raw_sub.genotype .== "129(TT-3F4-FFI)HOZ"]
         raw_ctrl = raw_sub.total[raw_sub.genotype .!= "129(TT-3F4-FFI)HOZ"]
 
-        pval_total = 1.0
-        try
-            pval_total = pvalue(UnequalVarianceTTest(raw_ffi, raw_ctrl))
-        catch; end
-
-        prop_ffi = raw_sub.prop_labeled[raw_sub.genotype .== "129(TT-3F4-FFI)HOZ"]
-        prop_ctrl = raw_sub.prop_labeled[raw_sub.genotype .!= "129(TT-3F4-FFI)HOZ"]
-        pval_label = 1.0
-        try
-            pval_label = pvalue(UnequalVarianceTTest(prop_ffi, prop_ctrl))
-        catch; end
-
         ratio_total = mean(raw_ffi) / mean(raw_ctrl)
         ratio_thalf = thalf_ffi / thalf_ctrl
 
         DataFrame(
-            pval_total = pval_total,
             ratio_total = ratio_total,
             ratio_thalf = ratio_thalf,
-            pval_label_ffi = pval_label,
             log2_ratio_total = log2(ratio_total),
             log2_ratio_thalf = log2(ratio_thalf),
             pepnick = first(df.peptide[1], 4)
@@ -186,12 +186,9 @@ function main()
     out_table = select(innerjoin(master_results, leg, on=:genotype),
                       :protein, :peptide, :age, :genotype, :disp => :genotype_label,
                       :n_obs, :thalf_fast, :prop_fast, :thalf_slow, :prop_slow,
-                      :thalf_effective, :runs_pvalue, :runs_n)
-    CSV.write("display_items/table-mixture-model-results.tsv", out_table, delim='\t')
-
-    CSV.write("data/iqp/mixture_params.tsv", master_results, delim='\t')
-
-    CSV.write("data/iqp/genotypic_diffs.tsv", genotypic_diffs, delim='\t')
+                      :thalf_effective, :aic_single, :aic_mixture, :delta_aic)
+    CSV.write("data/fig4/table-mixture-model-results.tsv", out_table, delim='\t')
+    CSV.write("data/fig4/genotypic_diffs.tsv", genotypic_diffs, delim='\t')
 
     println("All files saved successfully.")
 end

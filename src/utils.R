@@ -10,10 +10,11 @@ tell_user('Loading required packages...')
 suppressMessages(library(tidyverse))
 suppressMessages(library(janitor))
 suppressMessages(library(openxlsx))
-# suppressMessages(library(smoother))  # Not available for R 4.5.1
+suppressMessages(library(smoother))  # Not available for R 4.5.1
 suppressMessages(library(plotrix))
-# suppressMessages(library(magick))  # Installation failed
+suppressMessages(library(magick))  # Installation failed
 suppressMessages(library(minpack.lm))
+suppressMessages(library(betareg))
 
 
 
@@ -75,7 +76,7 @@ Lt = function(avails, t, lambda) {
 }
 
 
-calculate_residuals_Lt = function(par, data, dt=0.01) {
+calculate_residuals_Lt = function(par, data, dt=0.01, avails) {
   lambda = par[['lambda']]
   t = seq(0,max(data$day),dt)
   L_pred = Lt(avails, t, lambda)[match(data$day, t)]
@@ -87,7 +88,7 @@ calculate_residuals_Lt = function(par, data, dt=0.01) {
 fit_isotopic_thalf = function(chow_days, prop_labeled, start_lambda=log(2)/5, avails_function=free_lysine, dt=0.01) {
   t = seq(0, max(chow_days), dt)
   avails = avails_function(t) 
-  nlsfit = nls.lm(par=c(lambda=start_lambda), fn=calculate_residuals_Lt, data=tibble(day=chow_days, prop_labeled), dt=dt)
+  nlsfit = nls.lm(par=c(lambda=start_lambda), fn=calculate_residuals_Lt, data=tibble(day=chow_days, prop_labeled), dt=dt, avails=avails)
   fit_lambda = as.numeric(nlsfit$par['lambda'])
   thalf_found = log(2)/fit_lambda
   return(thalf_found)
