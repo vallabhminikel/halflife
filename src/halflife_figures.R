@@ -72,7 +72,7 @@ ffi_all %>%
   ungroup() -> thalves_by_genotype_and_age
 
 # Join with mixture model results from Julia
-mixture_model_results = read_tsv('display_items/table-mixture-model-results.tsv', col_types=cols())
+mixture_model_results = read_tsv('data/fig4/table-mixture-model-results.tsv', col_types=cols())
 
 thalves_by_genotype_and_age = thalves_by_genotype_and_age %>%
   inner_join(mixture_model_results %>% 
