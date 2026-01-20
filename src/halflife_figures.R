@@ -1,20 +1,23 @@
-source("src/utils.R")
-source("src/funcs.R")
+# Load here package for path resolution
+library(here)
+
+source(here("src/utils/utils.R"))
+source(here("src/utils/funcs.R"))
 
 
 # Figures ####
 
-source("src/fig1.R")
-source("src/figS1.R")
-source("src/figS2.R")
-source("src/figS3.R")
-source("src/fig2.R")
-source("src/fig3.R")
-source("src/figS4.R")
-source("src/figS5.R")
-source("src/figS6.R")
-source("src/fig4.R")
-source("src/figS7.R")
+source(here("src/figs/fig1.R"))
+source(here("src/figs/figS1.R"))
+source(here("src/figs/figS2.R"))
+source(here("src/figs/figS3.R"))
+source(here("src/figs/fig2.R"))
+source(here("src/figs/fig3.R"))
+source(here("src/figs/figS4.R"))
+source(here("src/figs/figS5.R"))
+source(here("src/figs/figS6.R"))
+source(here("src/figs/fig4.R"))
+source(here("src/figs/figS7.R"))
 
 ason_pk_rna %>%
   mutate(conc_ug_g = pk_ug_g) %>%
