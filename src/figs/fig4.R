@@ -237,4 +237,12 @@ for (this_age in c('young','aged')) {
 }
 
 silence_is_golden = dev.off()
+
+# Write mixture model results to supplementary table (only for Figure 4 panels C, D, G, H)
+if (file.exists('data/fig4/table-mixture-model-results.tsv')) {
+  ffi_mixture_params = read_tsv('data/fig4/table-mixture-model-results.tsv', col_types=cols()) %>%
+    filter(protein == 'PRNP' & peptide %in% c('GENFTETDVK', 'VVEQMCVTQYQK'))
+  write_supp_table(ffi_mixture_params, 'Mixture model parameters for PrP peptides shown in Figure 4 panels C, D, G, H (single-rate vs mixture model comparison).')
+}
+
 ### end Fig 4 ####
