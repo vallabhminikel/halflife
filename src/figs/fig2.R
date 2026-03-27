@@ -1,12 +1,19 @@
 tell_user('done.\nCreating Figure 2...')
 resx=300
-png('display_items/figure-2.png',width=6.5*resx,height=4.5*resx,res=resx)
+png('display_items/figure-2.png',width=6.5*resx,height=7.0*resx,res=resx)
 
-layout_matrix = matrix(c(1,1,1,2,2,2,3,3,3,
-                         4,4,4,4,4,5,5,6,6), nrow=2, byrow=T)
+layout_matrix = matrix(c(1,1,1,1,1,1,1,1,1,
+                         2,2,2,3,3,3,4,4,4,
+                         5,5,5,5,5,6,6,7,7), nrow=3, byrow=T)
 layout(layout_matrix)
 
 panel = 1
+
+### peptide diagram ####
+par(mar=c(0.25,0,1,0.25))
+peptide_panel = image_convert(image_read('data/misc/peptide-diagram.png'),'png')
+plot(as.raster(peptide_panel))
+mtext(side=3, adj=0.05, text=LETTERS[panel], line=-0.75); panel = panel + 1
 
 ### A CRL percent labeled ####
 

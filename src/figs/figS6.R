@@ -6,6 +6,8 @@ png('display_items/figure-s6.png',width=resx*3.25,height=3.5*resx, res=resx)
 
 par(mar=c(1,3,1,1))
 
+rbind_files('data/','21[46].tsv') %>%
+  mutate(plate = as.integer(substr(file,1,3))) -> elisa_raw
 rbind_files('data/','21[46]_summary.tsv') %>%
   mutate(plate = as.integer(substr(file,1,3))) -> elisa
 cohort = read_tsv('data/tg_expression_cohort.tsv',col_types=cols()) %>%
@@ -20,6 +22,9 @@ cohort %>%
   group_by(plate) %>%
   mutate(rel = ngml_av / mean(ngml_av[genotype=='WT'])) %>%
   select(-ngml_av) -> tgexp
+cohort %>%
+  inner_join(elisa_raw, by=c('animal'='detail', 'plate')) %>%
+  inner_join(meta, by='genotype') -> tgexp_raw
 tgexp %>%
   group_by(x, color, genotype) %>%
   summarize(.groups='keep',

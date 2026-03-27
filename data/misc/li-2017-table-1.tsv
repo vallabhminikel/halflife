@@ -1,0 +1,19 @@
+Tissue	Abbreviations	Male_1	Male_2	Female_3	Female_4	Total
+Adrenal gland	Ag	-	-	+	+	2
+Bone marrow	Bm	+	+	+	+	4
+Brain	Br	+	+	+	+	4
+Fat	Fa	-	-	+	+	2
+Heart	He	+	+	-	-	2
+Kidney	Ki	+	+	+	+	4
+Liver	Li	+	+	+	+	4
+Lung	Lu	+	+	-	-	2
+Muscle	Mu	+	+	-	-	2
+Ovary	Ov	-	-	+	+	2
+Pancreas	Pa	-	-	+	+	2
+Salivary gland	Sg	-	-	+	+	2
+Small intestine	Si	-	-	+	+	2
+Spleen	Sp	+	+	-	-	2
+Stomach	St	-	-	+	+	2
+Testis	Te	+	+	-	-	4
+Thymus	Th	+	+	-	-	2
+Total	-	11	11	11	11	68
