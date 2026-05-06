@@ -1,11 +1,87 @@
 tell_user('done.\nCreating Figure 2...')
+
+
+crl_prot = read_tsv('data/crl_proteomics.tsv', col_types=cols()) %>%
+  mutate(heavy = replace_na(heavy, bql)) %>%
+  mutate(total = light + heavy) %>%
+  mutate(proportion_heavy = heavy / total) %>%
+  inner_join(tissue_meta, by ='tissue')
+
+
+pivot_tab %>%
+  inner_join(iqp_meta, by=c('identifier'='animal_id')) %>%
+  mutate(total = heavy + light) %>%
+  mutate(prop_labeled = heavy / total) %>%
+  inner_join(lloq_stats, by=c('peptide','protein'='gene')) %>%
+  mutate(above_lloq = pmin(light,heavy) >= lloq) -> iqp_data
+
+
+genotype_meta = tibble(genotype = c("C57BL/6N","Tga20 het","ZH3/+","Tg25109 het; ZH3/ZH3"),
+                       explanation = c('WT','Tga20','het KO','HuPrP'),
+                       xgeno = c(1,2,3,4))
+
+prnp_pep_meta = tibble(peptide = c("VVEQMCVTQYQK", "GENFTETDVK", "QHTVTTTTK"),
+                       short = c('VVEQ','GENF','QHTV'),
+                       pep_color = c("#e5b6b6", "#849cb5", "#a2bca2"),
+                       xpep = c(2,1,3))
+
+tissue_meta = tibble(tissue=c('brain','colon'),
+                     color = c('#CCCF00','#EEBB77'),
+                     xtiss=c(1,2))
+
+adjusted_free_lysine = function(x) {
+  return (function(t) { pmin(1,x * free_lysine(t)) })
+}
+
+
+paired_samples = c(12, 23, 24)
+
+tissue_colors = c(brain='#CCCF00', colon='#EEBB77')
+
+
+read_tsv('data/iqp/quantified_lh_hh.tsv', col_types=cols()) %>%
+  clean_names() %>%
+  mutate(tissue = tolower(tissue)) %>%
+  filter(iqp_id %in% paired_samples) %>%
+  select(tissue, iqp_id, pg_genes, pg_group_label, peptide, charge, protein_abundance, 
+         light_light, light_heavy, heavy_heavy, log_min_signal_binned) %>%
+  mutate(ria = 2/(2 + (light_heavy / heavy_heavy))) -> lh_hh
+
+write_supp_table(lh_hh, 'LH/HH data used to calculate relative isotope abundance (RIA).')
+
+
+lh_hh %>%
+  inner_join(tissue_meta, by='tissue') %>%
+  rename(x = xtiss) %>%
+  group_by(tissue, iqp_id, x, color) %>% # summarize across all peptides
+  summarize(.groups='keep',
+            n    = n(),
+            mean_ria = mean(ria, na.rm=T),
+            l95 = lower(ria),
+            u95 = upper(ria)) %>%
+  ungroup() -> individual_lh_hh
+
+individual_lh_hh %>%
+  group_by(tissue, x, color) %>%
+  summarize(.groups='keep',
+            n    = n(),
+            mean = mean(mean_ria),
+            l95 = lower(mean_ria),
+            u95 = upper(mean_ria)) %>%
+  ungroup() -> lh_hh_tissue_smry 
+
+colon_ria_multiplier = lh_hh_tissue_smry$mean[lh_hh_tissue_smry$tissue=='colon'] / lh_hh_tissue_smry$mean[lh_hh_tissue_smry$tissue=='brain']
+
+
 resx=300
 png('display_items/figure-2.png',width=6.5*resx,height=7.0*resx,res=resx)
 
 layout_matrix = matrix(c(1,1,1,1,1,1,1,1,1,
                          2,2,2,3,3,3,4,4,4,
-                         5,5,5,5,5,6,6,7,7), nrow=3, byrow=T)
-layout(layout_matrix)
+                         5,5,5,5,6,7,7,8,8), nrow=3, byrow=T)
+layout(layout_matrix, 
+       heights = c(1, 1, 1),
+       widths =  c(1,1,1,0.5,1.5,1,1,1,1))
 
 panel = 1
 
@@ -16,6 +92,8 @@ plot(as.raster(peptide_panel))
 mtext(side=3, adj=0.05, text=LETTERS[panel], line=-0.75); panel = panel + 1
 
 ### A CRL percent labeled ####
+
+
 
 par(mar=c(3,4,3,3))
 xlims = c(-1, 9)
@@ -168,8 +246,11 @@ all_prnp_plab %>%
             l95 = lower(prop_labeled),
             u95 = upper(prop_labeled)) %>%
   ungroup() %>%
-  mutate(estimated_thalf = find_thalf(mean),
-         estimated_thalf_if_100 = find_thalf(mean, avails=always_all)) -> smry
+  mutate(estimated_thalf_unadjusted = find_thalf(mean, avails=free_lysine),
+    estimated_thalf_adjusted = find_thalf(mean, avails=adjusted_free_lysine(colon_ria_multiplier))) %>%
+  mutate(estimated_thalf = case_when(tissue=='brain' ~ estimated_thalf_unadjusted,
+                                     tissue=='colon' ~ estimated_thalf_adjusted)) %>%
+  select(-estimated_thalf_unadjusted, -estimated_thalf_adjusted) -> smry
 
 smry$pval = as.numeric(NA)
 for (i in 1:nrow(smry)) {
@@ -190,11 +271,20 @@ for (i in 1:nrow(smry)) {
 testing_burden = sum(smry$genotype != 'C57BL/6N')
 smry$pbonf = pmin(1, smry$pval*testing_burden)
 
-write_supp_table(smry, 'PrP peptide labeling by genotype in IQ Proteomics data.')
+write_supp_table(smry, 'PrP peptide labeling and estimated half-life by genotype in IQ Proteomics data.')
+
+smry %>% 
+  group_by(tissue) %>% 
+  summarize(.groups='keep',
+            mean_labeled=mean(mean)) %>%
+  ungroup() -> prp_smry_by_tissue
+
+write_supp_table(prp_smry_by_tissue, 'Mean PrP peptide labeling by tissue in IQ Proteomics data.')
+
 
 prnp_iqp_smry = smry # save to use in next panel
 
-par(mar=c(3,4,3,1))
+par(mar=c(5,4,3,1))
 xlims = range(smry$x) + c(-0.7, 0.7)
 ylims = c(0, 0.7)
 ybigs = 0:10/10
@@ -202,7 +292,7 @@ ybiglabs = percent(ybigs)
 yats = 0:20/20
 plot(NA, NA, xlim=xlims, ylim=ylims, axes=F, ann=F, xaxs='i', yaxs='i')
 axis(side=1, at=xlims, labels=NA, lwd.ticks=0)
-mtext(side=1, line=-0.1, at=smry$x, text=smry$short, cex=0.35)
+mtext(side=1, line=0.2, at=smry$x, text=smry$short, cex=0.35, las=2)
 smry %>%
   group_by(genotype, explanation, tissue) %>%
   summarize(.groups='keep',
@@ -211,10 +301,10 @@ smry %>%
             midx = mean(x)) %>%
   ungroup() -> tranches
 overhang = 0.5
-tranche_line = 1.0
+tranche_line = 2.0
 for (i in 1:nrow(tranches)) {
   axis(side=1, line=tranche_line, at=c(tranches$minx[i]-overhang,tranches$maxx[i]+overhang), tck=0.03, labels=NA)
-  mtext(side=1, line=tranche_line-0.4, padj=1, at=c(tranches$midx[i]), text=tranches$explanation[i], cex=0.6)
+  mtext(side=1, line=tranche_line-0.4, padj=1, at=c(tranches$midx[i]), text=gsub(' ', '\n', tranches$explanation[i]), cex=0.4)
 }
 smry %>%
   group_by(tissue) %>%
@@ -241,10 +331,32 @@ arrows(x0=smry$x, y0=smry$l95, y1=smry$u95, code=3, angle=90, length=0.05, col='
 par(xpd=F)
 mtext(side=3, adj=0, text=LETTERS[panel], line=0.5); panel = panel + 1
 
+write_supp_table(individual_lh_hh, 'Summary of free lysine calculated from LH/HH ratios by individual animal and tissue.')
+
+write_supp_table(lh_hh_tissue_smry, 'Summary of free lysine calculated from LH/HH ratios by tissue.')
+
+par(mar=c(3,3,3,1))
+xlims = c(0.5, 2.5)
+ylims = c(0, 1)
+ybigs = 0:4/4
+yats  = 0:10/10
+plot(NA, NA, xlim=xlims, ylim=ylims, axes=F, ann=F, xaxs='i', yaxs='i')
+axis(side=2, at=ybigs, labels=NA, tck=-0.05)
+axis(side=2, at=ybigs, labels=percent(ybigs), lwd=0, las=2, line=-0.5)
+axis(side=2, at=yats,  labels=NA, tck=-0.02)
+mtext(side=2, line=2.5, text='RIA', cex=0.8)
+axis(side=1, at=xlims, labels=NA, lwd.ticks=0)
+mtext(side=1, line=-0.1, at=tissue_meta$xtiss, text=tissue_meta$tissue, cex=0.65)
+points(x=individual_lh_hh$x, y=individual_lh_hh$mean_ria,
+       pch=21, col=individual_lh_hh$color, bg='#FFFFFF', cex=1)
+arrows(x0=lh_hh_tissue_smry$x, y0=lh_hh_tissue_smry$l95, y1=lh_hh_tissue_smry$u95,
+       code=3, angle=90, length=0.05, lwd=2, col=lh_hh_tissue_smry$color)
+barwidth = 0.4
+segments(x0=lh_hh_tissue_smry$x-barwidth, x1=lh_hh_tissue_smry$x+barwidth, y0=lh_hh_tissue_smry$mean, lwd=1.5, col=lh_hh_tissue_smry$color)
+mtext(side=3, adj=0, text=LETTERS[panel], line=0.5); panel = panel + 1
 
 
-
-### E/F theoretical vs. diff prots ####
+### G & H theoretical vs. diff prots ####
 
 reported = lit_half %>%
   mutate(reported_halflife = case_when(is.na(cerebellum) ~ cortex,
@@ -284,11 +396,28 @@ for (this_tissue in c('brain','colon')) {
   axis(2, at = c(0:8 * 0.125), labels = NA, cex = 0.8, tck = -0.025)
   mtext(side = 3, line = 0, text = this_tissue, cex = 0.8)
   
-  thalf_values = seq(0, 12, .1)
-  points(thalf_values, proportion_labeled_t(thalf_values, t=t, which_t = 8, avails=free_lysine), type = 'l', col = lysine_meta$color[2], lwd = 2)
+  prnp_iqp_smry %>%
+    filter(tissue==this_tissue) %>%
+    filter(genotype=='C57BL/6N') %>%
+    arrange(desc(mean)) -> subs
+  
   if (this_tissue=='colon') {
-    points(thalf_values, proportion_labeled_t(thalf_values, t=t, which_t = 8, avails=always_all), type = 'l', col = lysine_meta$color[1], lwd = 2)
+    avails=adjusted_free_lysine(colon_ria_multiplier)
+    subs -> colon_subs
+  } else if (this_tissue=='brain') {
+    avails=free_lysine
+    subs -> brain_subs
   }
+  
+  thalf_values = seq(0, 12, .1)
+  points(thalf_values, proportion_labeled_t(thalf_values, t=t, which_t = 8, avails=avails), type = 'l', col = lysine_meta$color[2], lwd = 2)
+  
+  prnp_color = '#0001CD'
+  
+  label_x = 1.2
+  segments(x0=rep(0, nrow(subs)), x1=find_thalf(subs$mean,avails=avails), y0=subs$mean, col=prnp_color, lty=3)
+  text(x=rep(label_x,2), y=subs$mean+c(-0.02,0.02), pos=c(3,1), labels=subs$short, col="#0001CD", cex=0.5)
+  segments(x0=find_thalf(subs$mean,avails=avails), y0=rep(0,nrow(subs)), y1=subs$mean, col=prnp_color, lty=3)
   
   lloq_meta = tibble(above_lloq = c(1,0,0),
                      color = c('#000000','#C9C9C9','#BFB7EF'),
@@ -315,27 +444,145 @@ for (this_tissue in c('brain','colon')) {
   
   points(smry$reported_halflife, smry$mean, pch=1, cex = 1.2, col =smry$color)
   
-  prnp_iqp_smry %>%
-    filter(tissue==this_tissue) %>%
-    filter(genotype=='C57BL/6N') %>%
-    arrange(desc(mean)) -> subs
-  prnp_color = '#0001CD'
-  
-  if (this_tissue == 'brain') {
-    avails = free_lysine
-    label_x = 1.5
-  } else if (this_tissue == 'colon') {
-    avails = always_all
-    label_x = 1.5
-  }
-  segments(x0=rep(0, nrow(subs)), x1=find_thalf(subs$mean,avails=avails), y0=subs$mean, col=prnp_color, lty=3)
-  text(x=rep(label_x,2), y=subs$mean+c(-0.02,0.02), pos=c(3,1), labels=subs$short, col="#0001CD", cex=0.5)
-  segments(x0=find_thalf(subs$mean,avails=avails), y0=rep(0,nrow(subs)), y1=subs$mean, col=prnp_color, lty=3)
-  
   legend("topright", legend = lloq_meta$disp, col =lloq_meta$color, pch = 1, cex = 0.5, bty='n')
   
   mtext(side=3, adj=0, text=LETTERS[panel], line=0.5); panel = panel + 1
 }
-
 silence_is_golden = dev.off()
 ### end Figure 2 ####
+
+
+
+
+
+
+resx=300
+png('display_items/figure-s4.png',width=6.5*resx,height=4.0*resx,res=resx)
+
+layout_matrix = matrix(c(1,2), nrow=1, byrow=T)
+layout(layout_matrix)
+
+panel = 1
+
+tissue_colors = c(brain='#CCCF00', colon='#EEBB77')
+
+x_map = tibble(tissue = rep(c('brain','colon'), each=length(paired_samples)),
+               iqp_id = rep(paired_samples, 2),
+               x      = c(1:3, 5:7)) %>%
+  mutate(color = tissue_colors[tissue],
+         label = paste('animal', match(iqp_id, paired_samples)))
+
+plot_dat = lh_hh %>%
+  filter(iqp_id %in% paired_samples) %>%
+  mutate(ria = 2/(2 + (light_heavy / heavy_heavy))) %>%
+  inner_join(x_map, by=c('tissue','iqp_id'))
+
+
+plot_dat %>%
+  distinct(peptide, charge) %>%
+  summarize(n()) %>% pull() -> unique_peptides_for_lh_hh
+
+smry = plot_dat %>%
+  group_by(tissue, iqp_id, x, color) %>%
+  summarize(.groups='keep',
+            n    = n(),
+            mean = mean(ria, na.rm=T),
+            l95 = lower(ria),
+            u95 = upper(ria)) %>% 
+  ungroup()
+
+smry -> lh_hh_smry_by_animal_and_tissue
+
+
+  
+par(mar=c(3,4,3,1))
+xlims = c(0.3, 7.7)
+ylims = c(0, 1)
+ybigs = 0:4/4
+yats  = 0:10/10
+plot(NA, NA, xlim=xlims, ylim=ylims, axes=F, ann=F, xaxs='i', yaxs='i')
+axis(side=2, at=ybigs, labels=NA, tck=-0.04)
+axis(side=2, at=ybigs, labels=percent(ybigs), lwd=0, las=2, line=-0.25)
+axis(side=2, at=yats,  labels=NA, tck=-0.02)
+mtext(side=2, line=2.5, text='RIA', cex=0.8)
+axis(side=1, at=xlims, labels=NA, lwd.ticks=0)
+mtext(side=1, line=0.2, at=x_map$x, text=gsub(' ','\n',x_map$label), padj=0, cex=0.4)
+for (this_tissue in c('brain','colon')) {
+  xs = x_map$x[x_map$tissue==this_tissue]
+  axis(side=1, at=c(min(xs)-0.6, max(xs)+0.6), line=1.2, tck=0.03, labels=NA)
+  mtext(side=1, line=1.5, at=mean(xs), text=this_tissue, cex=0.8)
+}
+set.seed(1)
+points(x=jitter(plot_dat$x, amount=0.15), y=plot_dat$ria,
+       pch=21, col=alpha(plot_dat$color, 0.2), bg=alpha('#FFFFFF',0.2), cex=0.5)
+arrows(x0=smry$x, y0=smry$l95, y1=smry$u95,
+       code=3, angle=90, length=0.05, lwd=2, col=smry$color)
+barwidth = 0.4
+segments(x0=smry$x-barwidth, x1=smry$x+barwidth, y0=smry$mean, lwd=1.5, col=smry$color)
+mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
+
+bin_map = lh_hh %>%
+  filter(iqp_id %in% paired_samples) %>%
+  distinct(tissue, log_min_signal_binned) %>%
+  arrange(tissue, log_min_signal_binned) %>%
+  mutate(x     = ifelse(tissue=='brain', row_number(), row_number() + 1),
+         color = tissue_colors[tissue],
+         label = sprintf('%.2f', log_min_signal_binned))
+
+plot_dat2 = lh_hh %>%
+  filter(iqp_id %in% paired_samples) %>%
+  mutate(ria = 2/(2 + (light_heavy / heavy_heavy))) %>%
+  inner_join(bin_map, by=c('tissue','log_min_signal_binned'))
+
+smry2 = plot_dat2 %>%
+  group_by(tissue, log_min_signal_binned, x, color) %>%
+  summarize(.groups='keep',
+            n_peptides    = n(),
+            mean = mean(ria, na.rm=T),
+            l95 = lower(ria),
+            u95 = upper(ria)) %>%
+  ungroup() 
+
+smry2 -> lh_hh_smry_by_bin_and_tissue
+write_supp_table(lh_hh_smry_by_bin_and_tissue, 'Summary of free lysine calculated from LH/HH ratios by intensity bin and tissue.')
+
+plot_dat2 %>%
+  distinct(peptide, charge) %>%
+  summarize(n()) %>% pull() -> unique_peptides_for_lh_hh_by_bin
+
+
+plot_dat2 %>%
+  distinct(pg_genes) %>%
+  summarize(n()) %>% pull() -> unique_genes
+
+par(mar=c(3,4,3,1))
+xlims = c(0.3, max(bin_map$x) + 0.7)
+ylims = c(0, 1)
+ybigs = 0:4/4
+yats  = 0:10/10
+plot(NA, NA, xlim=xlims, ylim=ylims, axes=F, ann=F, xaxs='i', yaxs='i')
+axis(side=2, at=ybigs, labels=NA, tck=-0.04)
+axis(side=2, at=ybigs, labels=percent(ybigs), lwd=0, las=2, line=-0.25)
+axis(side=2, at=yats,  labels=NA, tck=-0.02)
+mtext(side=2, line=2.5, text='RIA', cex=0.8)
+axis(side=1, at=xlims, labels=NA, lwd.ticks=0)
+mtext(side=1, line=0.2, at=bin_map$x, text=paste0('bin\n',bin_map$label), padj=0, cex=0.4)
+for (this_tissue in c('brain','colon')) {
+  xs = bin_map$x[bin_map$tissue==this_tissue]
+  axis(side=1, at=c(min(xs)-0.6, max(xs)+0.6), line=1.2, tck=0.03, labels=NA)
+  mtext(side=1, line=1.5, at=mean(xs), text=this_tissue, cex=0.8)
+}
+set.seed(1)
+points(x=jitter(plot_dat2$x, amount=0.15), y=plot_dat2$ria,
+       pch=21, col=alpha(plot_dat2$color, 0.2), bg=alpha('#FFFFFF', 0.2), cex=0.5)
+arrows(x0=smry2$x, y0=smry2$l95, y1=smry2$u95,
+       code=3, angle=90, length=0.05, lwd=2, col=smry2$color)
+barwidth = 0.4
+segments(x0=smry2$x-barwidth, x1=smry2$x+barwidth, y0=smry2$mean, lwd=1.5, col=smry2$color)
+mtext(side=3, adj=-0.2, text=LETTERS[panel], line=0.5); panel = panel + 1
+
+dev.off()
+
+
+
+

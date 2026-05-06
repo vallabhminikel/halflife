@@ -205,7 +205,7 @@ function generate_figure_model_comparison()
           halign=:center,
           nbanks=1)
 
-    filename = "display_items/figure-s8.png"
+    filename = "display_items/figure-s9.png"
     resize_to_layout!(fig)
 
     save(filename, fig, px_per_unit=2)

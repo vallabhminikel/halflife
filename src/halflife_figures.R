@@ -13,12 +13,14 @@ source(here("src/figs/figS2.R"))
 source(here("src/figs/figS3.R"))
 source(here("src/figs/fig2.R"))
 source(here("src/figs/fig3.R"))
-source(here("src/figs/figS4.R"))
 source(here("src/figs/figS5.R"))
 source(here("src/figs/figS6.R"))
-source(here("src/figs/fig4.R"))
 source(here("src/figs/figS7.R"))
+source(here("src/figs/fig4.R"))
+source(here("src/figs/figS8.R"))
 
+ason_pk_rna = read_tsv('data/PRP230911.tsv', col_types=cols()) %>%
+  mutate(animal = gsub('-','',animal))
 ason_pk_rna %>%
   mutate(conc_ug_g = pk_ug_g) %>%
   mutate(day = as.integer(gsub('D','',day))) %>%
